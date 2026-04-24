@@ -1,0 +1,27 @@
+/* ChalkTalk — Program Theme : DeMATHA CATHOLIC
+   ---------------------------------------------------------------
+   Link from each DeMatha playbook AFTER the main <style> block:
+     <link rel="stylesheet" href="theme.css">
+
+   See playbooks/melo-16u/theme.css for full documentation of the
+   --prog-* variable contract. DeMatha maps navy → --prog-primary
+   and muted gold → --prog-accent, so every legacy var(--gold)
+   reference in the playbook CSS shifts to the DeMatha palette
+   without editing per-playbook markup.
+*/
+
+:root {
+  --prog-primary:   #0a2240;                  /* DeMatha navy */
+  --prog-accent:    #c8960c;                  /* DeMatha gold */
+  --prog-secondary: #ffffff;
+  --prog-name:      "DeMATHA CATHOLIC";
+  --prog-label:     "HIGH SCHOOL · VARSITY";
+
+  /* Legacy playbook vars remapped onto program theme. */
+  --gold: var(--prog-accent);
+}
+
+header,
+.sidebar {
+  background: var(--prog-primary);
+}

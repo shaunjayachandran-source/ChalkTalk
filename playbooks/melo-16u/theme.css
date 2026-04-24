@@ -1,0 +1,39 @@
+/* ChalkTalk — Program Theme : MELO 16U
+   ---------------------------------------------------------------
+   This file overrides ChalkTalk's default palette with program-
+   specific colors and identity strings. Link it from each playbook
+   in the program AFTER the main <style> block so the cascade wins.
+
+   <link rel="stylesheet" href="theme.css">
+
+   Usage:
+     --prog-primary : header/nav/sidebar chrome background
+     --prog-accent  : highlight color (buttons, active tabs, cues)
+     --prog-secondary : inverse text color on accent backgrounds
+     --prog-name    : program display name (for content: property)
+     --prog-label   : program subtitle / level
+
+   The legacy ChalkTalk var --gold is remapped to --prog-accent so
+   every existing `var(--gold)` reference in the playbooks (header
+   highlight, phase-tab.active, sidebar h3, pill.p1, etc.) is
+   automatically themed without editing the per-playbook CSS.
+*/
+
+:root {
+  --prog-primary:   #1a1a2e;            /* header/nav background */
+  --prog-accent:    #f0b429;            /* Melo gold — matches ChalkTalk default */
+  --prog-secondary: #ffffff;
+  --prog-name:      "MELO 16U";
+  --prog-label:     "AAU · 16U";
+
+  /* Legacy playbook vars remapped onto program theme. ----------- */
+  --gold: var(--prog-accent);
+}
+
+/* Apply program chrome colors to header + sidebar. These selectors
+   match the structure produced by the engine template. If a program
+   wants identical-to-default look, set --prog-primary to #0d1017. */
+header,
+.sidebar {
+  background: var(--prog-primary);
+}
