@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Access Restricted · ChalkTalk</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg:       #0d1017;
+    --panel:    #121820;
+    --border:   #1e2a3a;
+    --border-2: #27364a;
+    --gold:     #f0b429;
+    --white:    #f2ede4;
+    --gray:     #6b7a8d;
+    --gray-2:   #8a99ac;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body { min-height: 100vh; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.5;
+  }
+
+  /* ---------- SITE MARK (top) ---------- */
+  .site-mark {
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+  .site-mark .tri { color: var(--gold); margin-right: 6px; }
+  .site-mark strong { color: var(--white); font-weight: 500; letter-spacing: 2.5px; }
+
+  /* ---------- CENTERED PANEL ---------- */
+  main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 520px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 36px 34px 32px;
+    position: relative;
+  }
+
+  /* Subtle gold accent bar at the top of the panel — a quiet signal,
+     not a warning color. */
+  .panel::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 44px; height: 2px;
+    background: var(--gold);
+    border-radius: 4px 0 0 0;
+  }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(30px, 5vw, 44px);
+    letter-spacing: 2.5px;
+    line-height: 1.05;
+    margin-bottom: 18px;
+    color: var(--white);
+  }
+
+  .lede {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    color: var(--gray-2);
+    margin-bottom: 22px;
+  }
+
+  .detail {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: .3px;
+    color: var(--gray);
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+
+  /* ---------- CTA ROW ---------- */
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 10px 16px;
+    border-radius: 2px;
+    transition: background .18s, border-color .18s, color .18s, transform .18s;
+  }
+
+  .btn.primary {
+    background: var(--gold);
+    color: var(--bg);
+    border: 1px solid var(--gold);
+    font-weight: 700;
+  }
+  .btn.primary:hover { transform: translateY(-1px); background: #ffc94d; }
+
+  .btn.secondary {
+    background: transparent;
+    color: var(--gray-2);
+    border: 1px solid var(--border-2);
+  }
+  .btn.secondary:hover { color: var(--white); border-color: var(--gray); }
+
+  .btn .arrow { font-size: 13px; }
+
+  /* ---------- FOOTER ---------- */
+  footer {
+    padding: 14px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray);
+    flex-wrap: wrap;
+  }
+  footer strong { color: var(--gold); font-weight: 700; letter-spacing: 2px; }
+  footer .beta {
+    background: var(--gold);
+    color: var(--bg);
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 640px) {
+    .site-mark { padding: 16px; font-size: 10px; }
+    main { padding: 28px 16px; }
+    .panel { padding: 28px 22px 24px; }
+    h1 { font-size: 30px; letter-spacing: 2px; }
+    .lede { font-size: 14px; }
+    footer { padding: 12px 16px; font-size: 9px; }
+    .btn { font-size: 10px; padding: 9px 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="site-mark">
+  <span class="tri">▲</span> <strong>ChalkTalk</strong>
+</div>
+
+<main>
+  <div class="panel" role="region" aria-labelledby="blocked-heading">
+
+    <p class="eyebrow">Access Restricted</p>
+    <!-- Default headline is the one line that appears in BOTH pools,
+         so it's safe SSR content when JS is disabled or slow. -->
+    <h1 id="blocked-heading">No Tip-Off Without A Token</h1>
+
+    <p class="lede">
+      ChalkTalk playbooks are shared privately with a program's coaches,
+      players, and families. You'll need a link or token from your coach
+      to open this one.
+    </p>
+
+    <p class="detail">
+      If you think this is a mistake — maybe your token expired, or you
+      followed an older link — reach out and we'll get you sorted.
+    </p>
+
+    <div class="actions">
+      <!-- Update this mailto: to your program's contact address.
+           Subject is pre-filled so requests are easy to triage. -->
+      <a class="btn primary"
+         href="mailto:coach@chalktalk.app?subject=Playbook%20access%20request">
+        Contact My Coach <span class="arrow">→</span>
+      </a>
+      <a class="btn secondary" href="/">Back to Home</a>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <span>Powered by <strong>ChalkTalk</strong></span>
+  <span class="beta">Beta</span>
+</footer>
+
+<script>
+  /* Role-based headline rotation.
+     - /api/check-token redirects here with ?role=player|parent|coach|staff
+       when it recognizes the token (even if it rejected the request).
+     - No role param → union of both pools (still fun, no info leak).
+     - Re-rolls on every page load so repeat offenders see variety. */
+  (function () {
+    var PLAYER_LINES = [
+      "No Tip-Off Without A Token",
+      "You're Not In The Film Room Yet",
+      "Coach Still Has This One In Their Back Pocket",
+      "Coach Hasn't Called This Play For You",
+      "This One Is Still Being Drawn Up During A Timeout"
+    ];
+    var COACH_LINES = [
+      "You're In The Wrong Film Room",
+      "Check In With Coach First",
+      "The Locker Room Isn't Open Yet",
+      "Still On The Bench For This One",
+      "No Tip-Off Without A Token"
+    ];
+
+    var role = (new URLSearchParams(location.search).get("role") || "").toLowerCase();
+    var pool;
+    if (role === "coach" || role === "staff") {
+      pool = COACH_LINES;
+    } else if (role === "player" || role === "parent") {
+      pool = PLAYER_LINES;
+    } else {
+      // Union, deduplicated — preserves order, keeps the shared line once.
+      pool = PLAYER_LINES.concat(COACH_LINES.filter(function (l) {
+        return PLAYER_LINES.indexOf(l) === -1;
+      }));
+    }
+
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    var h = document.getElementById("blocked-heading");
+    if (h) h.textContent = pick;
+  })();
+</script>
+
+</body>
+</html>

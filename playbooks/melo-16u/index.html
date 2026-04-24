@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Melo 16U · Program Playbook · ChalkTalk</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg:        #0d1017;
+    --panel:     #121820;
+    --panel-2:   #151c27;
+    --border:    #1e2a3a;
+    --border-2:  #27364a;
+    --gold:      #f0b429;
+    --white:     #f2ede4;
+    --gray:      #6b7a8d;
+    --gray-2:    #8a99ac;
+    --red:       #e03a2e;
+    --locked:    #556170;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body { min-height: 100vh; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.45;
+  }
+
+  /* ---------- HEADER ---------- */
+  header {
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+
+  header .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  /* Program name + level pull directly from theme.css variables. */
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(24px, 3.6vw, 40px);
+    letter-spacing: 2.5px;
+    line-height: 1;
+    color: var(--white);
+  }
+  header h1::before { content: var(--prog-name, "PROGRAM"); }
+  header h1 .accent { color: var(--gold); margin-left: 8px; font-size: .55em; letter-spacing: 3px; vertical-align: middle; }
+
+  header p.level {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.8px;
+    color: var(--gray);
+    text-transform: uppercase;
+  }
+  header p.level::before { content: var(--prog-label, "PROGRAM · LEVEL"); }
+
+  header .chalktalk-mark {
+    margin-left: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--gray);
+    text-transform: uppercase;
+    border: 1px solid var(--border-2);
+    padding: 5px 10px;
+    border-radius: 2px;
+  }
+  header .chalktalk-mark span { color: var(--gold); }
+
+  /* ---------- SECTION HEAD ---------- */
+  main {
+    flex: 1;
+    padding: 26px 28px 32px;
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 1px dashed var(--border);
+    flex-wrap: wrap;
+  }
+
+  .section-head h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--gold);
+  }
+
+  .section-head .count {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+
+  /* ---------- CARD GRID ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 16px 14px;
+    text-decoration: none;
+    color: var(--white);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color .18s, transform .18s, background .18s;
+    min-height: 170px;
+  }
+
+  .card:hover {
+    border-color: var(--gold);
+    background: var(--panel-2);
+    transform: translateY(-1px);
+  }
+
+  .card:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  .card .type-strip {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+
+  .card .type-strip .dot {
+    color: var(--gray);
+    margin: 0 6px;
+  }
+
+  .card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 2px;
+    line-height: 1.05;
+    color: var(--white);
+  }
+
+  .card .summary {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--gray-2);
+    line-height: 1.5;
+    letter-spacing: .3px;
+    flex: 1;
+  }
+
+  .card .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px dashed var(--border);
+    padding-top: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+
+  .card .meta .arrow {
+    color: var(--gold);
+    font-size: 13px;
+    transition: transform .18s;
+  }
+
+  .card:hover .meta .arrow { transform: translateX(3px); }
+
+  /* ---------- LOCKED STATE ----------
+     Coach-only visibility. Today this is set manually via
+     `class="card locked"`. Later it will be driven by a
+     per-play "shared with players" flag in the engine. */
+  .card.locked {
+    pointer-events: none;
+    opacity: .62;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--panel) 0 10px,
+      var(--panel-2) 10px 20px
+    );
+  }
+
+  .card.locked h3 { color: var(--gray-2); }
+
+  .card .lock-badge {
+    display: none;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: var(--locked);
+    color: var(--bg);
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    padding: 3px 7px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+
+  .card.locked .lock-badge { display: inline-block; }
+  .card.locked .meta .arrow { color: var(--locked); }
+
+  /* ---------- FOOTER ---------- */
+  footer {
+    padding: 14px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray);
+    flex-wrap: wrap;
+  }
+
+  footer strong { color: var(--gold); font-weight: 700; letter-spacing: 2px; }
+
+  footer .beta {
+    background: var(--gold);
+    color: var(--bg);
+    padding: 3px 8px;
+    border-radius: 2px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width: 640px) {
+    header { padding: 16px 16px 14px; gap: 10px; }
+    header .chalktalk-mark { margin-left: 0; }
+    main { padding: 18px 16px 24px; }
+    .grid { grid-template-columns: 1fr; gap: 10px; }
+    .card { min-height: 150px; }
+    footer { padding: 12px 16px; font-size: 9px; }
+  }
+
+  @media (max-width: 400px) {
+    header h1 { font-size: 22px; letter-spacing: 2px; }
+    .card h3 { font-size: 19px; }
+  }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1><span class="accent">· PLAYBOOK</span></h1>
+    <p class="level"></p>
+  </div>
+  <span class="chalktalk-mark"><span>▲</span> CHALKTALK</span>
+</header>
+
+<main>
+
+  <div class="section-head">
+    <h2>Installed Plays</h2>
+    <span class="count">6 plays · 2 offensive sets · 1 defense · 2 BLOBs · 1 press break</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- 1 -->
+    <a class="card" href="maryland-box-set.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">Offense <span class="dot">·</span> 4 phases <span class="dot">·</span> vs Man</span>
+      <h3>Maryland — Box Set</h3>
+      <p class="summary">Box alignment into ball-screen continuity. Wing entry triggers 5 roll / 4 pop with swing-and-repeat flow.</p>
+      <div class="meta">
+        <span>Updated 2026-04-24</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+    <!-- 2 -->
+    <a class="card" href="press-break-melo-16u.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">Press Break <span class="dot">·</span> 6 phases <span class="dot">·</span> vs 1-2-1-1</span>
+      <h3>Zone Press Break</h3>
+      <p class="summary">Full-court 3-up alignment. Inbound to 1, reversal middle, attack the trap seam, cross-court to trailer.</p>
+      <div class="meta">
+        <span>Updated 2026-04-24</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+    <!-- 3 — locked state available via `class="card locked"` -->
+    <a class="card" href="x-play.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">Offense <span class="dot">·</span> 4 phases <span class="dot">·</span> Horns</span>
+      <h3>X Play</h3>
+      <p class="summary">2 guards up top with both bigs at the elbows and a shooter in the corner.</p>
+      <div class="meta">
+        <span>Updated 2026-04-24</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+    <!-- 4 -->
+    <a class="card" href="zone-12.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">Defense <span class="dot">·</span> 6 phases <span class="dot">·</span> 1-2-2</span>
+      <h3>Zone 12 — 1-2-2 Wing Entry</h3>
+      <p class="summary">Wing-entry trap rotation with corner shell. Reads pass-down-pass-back and backside help.</p>
+      <div class="meta">
+        <span>Updated 2026-04-15</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+    <!-- 5 — filename contains a space; must be URL-encoded in href -->
+    <a class="card" href="BLOB%201.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">BLOB <span class="dot">·</span> 3 phases <span class="dot">·</span> Baseline</span>
+      <h3>BLOB — Play 1</h3>
+      <p class="summary">Baseline out-of-bounds, box look. Inbounder is 3; first look is slip screen into corner three.</p>
+      <div class="meta">
+        <span>Updated 2026-04-16</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+    <!-- 6 -->
+    <a class="card" href="blob-play2.html">
+      <span class="lock-badge">Locked</span>
+      <span class="type-strip">BLOB <span class="dot">·</span> 4 phases <span class="dot">·</span> Baseline</span>
+      <h3>BLOB — Play 2</h3>
+      <p class="summary">Stack look with double staggered screens. Reads help-side X, counters with skip to corner.</p>
+      <div class="meta">
+        <span>Updated 2026-04-17</span>
+        <span class="arrow">→</span>
+      </div>
+    </a>
+
+  </div>
+
+</main>
+
+<footer>
+  <span>Powered by <strong>ChalkTalk</strong></span>
+  <span class="beta">Beta</span>
+</footer>
+
+</body>
+</html>
