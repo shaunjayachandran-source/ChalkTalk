@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChalkTalk · Interactive playbooks for players, parents, and coaches</title>
+<meta name="description" content="ChalkTalk turns your basketball playbook into something players actually open. Interactive diagrams, phase-by-phase breakdowns, and one private link per program.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Caveat:wght@400;600;700&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;700&family=Permanent+Marker&display=swap');
+
+  :root {
+    --bg:        #0d1017;
+    --panel:     #121820;
+    --panel-2:   #161e29;
+    --border:    #1e2a3a;
+    --border-2:  #27364a;
+    --gold:      #f0b429;
+    --white:     #f2ede4;
+    --gray:      #6b7a8d;
+    --gray-2:    #8a99ac;
+    --chalk:     #f2ede4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { min-height: 100vh; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* ─────────── TOP BAR ─────────── */
+  .topbar {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  .mark {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+  .mark .tri { color: var(--gold); margin-right: 6px; }
+  .mark strong { color: var(--white); font-weight: 500; letter-spacing: 2.5px; }
+
+  .beta {
+    background: var(--gold);
+    color: var(--bg);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    border-radius: 2px;
+  }
+
+  /* ─────────── HERO ─────────── */
+  .hero {
+    padding: 72px 28px 56px;
+    max-width: 980px;
+    margin: 0 auto;
+    text-align: center;
+    position: relative;
+  }
+
+  /* Subtle chalk-dust feel — barely there, just gives the panel below it
+     somewhere to land visually without committing to a full whiteboard. */
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(240,180,41,.05), transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(42,106,232,.04), transparent 55%);
+    pointer-events: none;
+  }
+
+  /* The wordmark — handwritten chalk feel via Permanent Marker.
+     Slight rotation + chalk-color stroke makes it read like a coach scrawling
+     on a whiteboard mid-timeout, rather than a polished logo. */
+  .wordmark {
+    font-family: 'Permanent Marker', 'Caveat', cursive;
+    font-size: clamp(56px, 11vw, 110px);
+    line-height: .95;
+    color: var(--chalk);
+    letter-spacing: 1px;
+    transform: rotate(-1.5deg);
+    display: inline-block;
+    text-shadow:
+      1px 1px 0 rgba(255,255,255,.04),
+      -1px 0 0 rgba(255,255,255,.03);
+    margin-bottom: 8px;
+    position: relative;
+  }
+  /* Hand-drawn underline beneath the wordmark — gold, slightly imperfect. */
+  .wordmark::after {
+    content: "";
+    position: absolute;
+    left: 6%;
+    right: 4%;
+    bottom: -6px;
+    height: 4px;
+    background: var(--gold);
+    border-radius: 4px;
+    transform: rotate(.6deg) skewX(-3deg);
+    opacity: .9;
+  }
+
+  .tagline {
+    font-family: 'DM Sans', sans-serif;
+    font-size: clamp(16px, 2.2vw, 20px);
+    color: var(--gray-2);
+    max-width: 620px;
+    margin: 28px auto 0;
+    font-weight: 400;
+  }
+
+  .hero-meta {
+    margin-top: 22px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--gray);
+  }
+  .hero-meta .dot { color: var(--gold); margin: 0 8px; }
+
+  /* ─────────── CTA ROW ─────────── */
+  .ctas {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 14px 22px;
+    border-radius: 2px;
+    transition: background .18s, border-color .18s, color .18s, transform .18s;
+    cursor: pointer;
+  }
+  .btn .arrow { font-size: 14px; }
+
+  .btn.primary {
+    background: var(--gold);
+    color: var(--bg);
+    border: 1px solid var(--gold);
+  }
+  .btn.primary:hover { transform: translateY(-1px); background: #ffc94d; }
+
+  .btn.secondary {
+    background: transparent;
+    color: var(--white);
+    border: 1px solid var(--border-2);
+  }
+  .btn.secondary:hover { color: var(--gold); border-color: var(--gray); }
+
+  /* ─────────── EXPLAINER ─────────── */
+  .explainer {
+    padding: 56px 28px 64px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .explainer-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 22px 22px;
+    position: relative;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 38px; height: 2px;
+    background: var(--gold);
+    border-radius: 4px 0 0 0;
+  }
+
+  .card .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 10px;
+  }
+  .card h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 1.6px;
+    color: var(--white);
+    margin-bottom: 10px;
+    line-height: 1.05;
+  }
+  .card p {
+    font-size: 13.5px;
+    color: var(--gray-2);
+    line-height: 1.6;
+  }
+
+  /* ─────────── DIFFERENTIATOR STRIP ─────────── */
+  .different {
+    padding: 48px 28px 72px;
+    max-width: 760px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .different .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2.4px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 14px;
+  }
+  .different h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(26px, 4.4vw, 38px);
+    letter-spacing: 2px;
+    line-height: 1.05;
+    color: var(--white);
+    margin-bottom: 18px;
+  }
+  .different p {
+    font-size: 15px;
+    color: var(--gray-2);
+    max-width: 620px;
+    margin: 0 auto 14px;
+  }
+
+  /* ─────────── FOOTER ─────────── */
+  footer {
+    padding: 18px 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gray);
+    flex-wrap: wrap;
+  }
+  footer .tag strong { color: var(--gold); font-weight: 700; letter-spacing: 2px; }
+  footer .meta { color: var(--gray); }
+
+  /* ─────────── RESPONSIVE ─────────── */
+  @media (max-width: 760px) {
+    .topbar { padding: 14px 16px; }
+    .hero { padding: 48px 18px 40px; }
+    .explainer { padding: 36px 18px 44px; }
+    .explainer-grid { grid-template-columns: 1fr; }
+    .different { padding: 28px 18px 56px; }
+    footer { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
+    .btn { font-size: 10px; padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="mark"><span class="tri">▲</span> <strong>ChalkTalk</strong></div>
+  <span class="beta">Closed Beta — Invite Only</span>
+</div>
+
+<!-- ─────────── HERO ─────────── -->
+<section class="hero">
+  <!-- Wordmark is a div, not an h1, so it can be styled like a chalk scrawl
+       without sacrificing the document's outline (h1 lives below in the
+       differentiator section, where the actual heading content is). -->
+  <div class="wordmark">ChalkTalk</div>
+
+  <p class="tagline">
+    Interactive playbooks for players, parents, and coaches.
+  </p>
+
+  <p class="hero-meta">
+    Diagrams &middot; Phase-by-phase <span class="dot">▲</span>
+    One private link per program <span class="dot">▲</span>
+    Built for the bench, not the boardroom
+  </p>
+
+  <div class="ctas">
+    <!-- Apply for Beta Access — points at a Google Form. The form URL is
+         a placeholder until the live form is published; swap REPLACE_ME for
+         the real shortlink. -->
+    <a class="btn primary"
+       href="https://forms.gle/REPLACE_ME"
+       target="_blank"
+       rel="noopener">
+      Apply for Beta Access <span class="arrow">→</span>
+    </a>
+
+    <!-- See a Sample Play — opens the public, sanitized one-phase preview.
+         No token gate, safe to share with anyone. -->
+    <a class="btn secondary" href="/demo/princeton-preview.html">
+      See a Sample Play <span class="arrow">→</span>
+    </a>
+  </div>
+</section>
+
+<!-- ─────────── EXPLAINER ─────────── -->
+<section class="explainer">
+  <div class="explainer-grid">
+    <div class="card">
+      <p class="eyebrow">What it is</p>
+      <h3>A Playbook That Opens On A Phone</h3>
+      <p>
+        Every set is a diagram you can step through, phase by phase. Players
+        see where they're supposed to be. Coaches stop redrawing the same
+        play on a napkin.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="eyebrow">Who it's for</p>
+      <h3>Programs, Not Apps</h3>
+      <p>
+        Built around your team. AAU programs, varsity staffs, and training
+        groups get one private link per program — players, parents, and
+        coaches all open the same playbook from anywhere.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="eyebrow">What's different</p>
+      <h3>Made For Basketball, Not Slides</h3>
+      <p>
+        Real half-court geometry, role-coded players, and coaching notes
+        next to the action. No PDFs, no whiteboard photos, no "open the
+        Google Doc" message in the group chat.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── DIFFERENTIATOR STRIP ─────────── -->
+<section class="different">
+  <p class="eyebrow">Why ChalkTalk</p>
+  <h2>The Bench Is The Audience</h2>
+  <p>
+    Your offense doesn't live in a binder. It lives in the heads of fifteen
+    people who all need to see the same thing the same way. ChalkTalk gives
+    a coach one place to put the system, and gives everyone else a way to
+    actually find it.
+  </p>
+  <p>
+    We're in closed beta with a small set of programs. If that sounds like
+    you, ask for an invite — we'll get back to you.
+  </p>
+</section>
+
+<!-- ─────────── FOOTER ─────────── -->
+<footer>
+  <span class="tag">Powered by <strong>ChalkTalk</strong></span>
+  <span class="meta">© ChalkTalk · Closed Beta · 2026</span>
+</footer>
+
+</body>
+</html>
