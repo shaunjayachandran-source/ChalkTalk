@@ -113,6 +113,7 @@ export default async function handler(req, res) {
       contentType: "text/html",
       addRandomSuffix: false,
       allowOverwrite: true,
+      contentDisposition: "inline",
     });
   } catch (err) {
     return sendJson(res, { error: `Failed to save playbook: ${err.message}` }, 502);
