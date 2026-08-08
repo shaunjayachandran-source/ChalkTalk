@@ -93,28 +93,27 @@ Never use jargon without a plain-language follow. Always explain WHY, not just w
 - Build every phase provided in the input brief — do not omit or merge phases.
 - Every player listed in a phase's "players" array must appear on that phase's diagram, even ones who are just holding a supporting position — never drop a player because they aren't the primary actor.`;
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return sendJson(res, { error: "Method not allowed" }, 405);
   }
 
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+  const body = req.body;
+
+  if (!body || typeof body !== "object") {
+    return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { token, program, brief } = body || {};
+  const { token, program, brief } = body;
 
   if (!token || !program || !brief) {
-    return json({ error: "Missing required fields" }, 400);
+    return sendJson(res, { error: "Missing required fields" }, 400);
   }
 
   // ---- Auth: re-validate independently, never trust the brief step ----
-  const authResult = await validateCoachToken(req, token, program);
+  const authResult = await validateCoachToken(token, program);
   if (!authResult.ok) {
-    return json({ error: authResult.error }, authResult.status);
+    return sendJson(res, { error: authResult.error }, authResult.status);
   }
 
   // ---- Call Claude to build the full HTML ----
@@ -144,27 +143,27 @@ export default async function handler(req) {
       }),
     });
   } catch (err) {
-    return json({ error: "Failed to reach Anthropic API" }, 502);
+    return sendJson(res, { error: "Failed to reach Anthropic API" }, 502);
   }
 
   if (!anthropicRes.ok) {
     const errText = await anthropicRes.text();
-    return json({ error: `Anthropic API error: ${errText}` }, 502);
+    return sendJson(res, { error: `Anthropic API error: ${errText}` }, 502);
   }
 
   const data = await anthropicRes.json();
   const textBlock = (data.content || []).find((b) => b.type === "text");
 
   if (!textBlock) {
-    return json({ error: "No HTML returned from model" }, 502);
+    return sendJson(res, { error: "No HTML returned from model" }, 502);
   }
 
   let html = textBlock.text.trim();
-  // Strip stray markdown fences if the model added any despite instructions
   html = html.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "");
 
   if (!html.toLowerCase().startsWith("<!doctype html")) {
-    return json(
+    return sendJson(
+      res,
       { error: "Model did not return a valid HTML document", raw: html.slice(0, 300) },
       502
     );
@@ -183,13 +182,13 @@ export default async function handler(req) {
       allowOverwrite: true,
     });
   } catch (err) {
-    return json({ error: `Failed to save playbook: ${err.message}` }, 502);
+    return sendJson(res, { error: `Failed to save playbook: ${err.message}` }, 502);
   }
 
-  return json({ url: blobResult.url });
+  return sendJson(res, { url: blobResult.url });
 }
 
-async function validateCoachToken(req, token, program) {
+async function validateCoachToken(token, program) {
   let tokens;
   try {
     const tokensPath = path.join(process.cwd(), "tokens.json");
@@ -222,9 +221,6 @@ function slugify(str) {
     .slice(0, 60) || "untitled-play";
 }
 
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function sendJson(res, obj, status = 200) {
+  res.status(status).json(obj);
 }

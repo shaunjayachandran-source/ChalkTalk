@@ -85,16 +85,15 @@ IMPORTANT: Every phase must include ALL FIVE offensive players (numbers 1-5), ev
 
 If the coach mentions a specific number of phases, honor it; otherwise infer a sensible phase count from the description.`;
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return sendJson(res, { error: "Method not allowed" }, 405);
   }
 
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
+  const body = req.body;
+
+  if (!body || typeof body !== "object") {
+    return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
   const {
@@ -107,16 +106,16 @@ export default async function handler(req) {
     description,
     imageBase64,
     imageMediaType,
-  } = body || {};
+  } = body;
 
   if (!token || !program || !description) {
-    return json({ error: "Missing required fields" }, 400);
+    return sendJson(res, { error: "Missing required fields" }, 400);
   }
 
   // ---- Auth: validate token against tokens.json, require role=coach ----
-  const authResult = await validateCoachToken(req, token, program);
+  const authResult = await validateCoachToken(token, program);
   if (!authResult.ok) {
-    return json({ error: authResult.error }, authResult.status);
+    return sendJson(res, { error: authResult.error }, authResult.status);
   }
 
   // ---- Build the Anthropic API request ----
@@ -166,19 +165,19 @@ export default async function handler(req) {
     console.log(`[generate-brief] Anthropic call took ${Date.now() - callStart}ms, status ${anthropicRes.status}`);
   } catch (err) {
     console.log(`[generate-brief] Anthropic call FAILED after ${Date.now() - callStart}ms: ${err.message}`);
-    return json({ error: "Failed to reach Anthropic API" }, 502);
+    return sendJson(res, { error: "Failed to reach Anthropic API" }, 502);
   }
 
   if (!anthropicRes.ok) {
     const errText = await anthropicRes.text();
-    return json({ error: `Anthropic API error: ${errText}` }, 502);
+    return sendJson(res, { error: `Anthropic API error: ${errText}` }, 502);
   }
 
   const data = await anthropicRes.json();
   const textBlock = (data.content || []).find((b) => b.type === "text");
 
   if (!textBlock) {
-    return json({ error: "No text response from model" }, 502);
+    return sendJson(res, { error: "No text response from model" }, 502);
   }
 
   let brief;
@@ -190,7 +189,8 @@ export default async function handler(req) {
       .replace(/```\s*$/i, "");
     brief = JSON.parse(cleaned);
   } catch (err) {
-    return json(
+    return sendJson(
+      res,
       { error: "Model did not return valid JSON", raw: textBlock.text },
       502
     );
@@ -198,7 +198,7 @@ export default async function handler(req) {
 
   brief.phases = (brief.phases || []).map(fillMissingPlayers);
 
-  return json({ brief });
+  return sendJson(res, { brief });
 }
 
 // Default supporting-position spots (half-court coordinates) used to fill
@@ -242,7 +242,7 @@ function fillMissingPlayers(phase) {
  * a self-referential network fetch back to the same deployment proved
  * unreliable on the Node.js runtime and could hang indefinitely.
  */
-async function validateCoachToken(req, token, program) {
+async function validateCoachToken(token, program) {
   let tokens;
   try {
     const tokensPath = path.join(process.cwd(), "tokens.json");
@@ -266,9 +266,6 @@ async function validateCoachToken(req, token, program) {
   return { ok: true };
 }
 
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+function sendJson(res, obj, status = 200) {
+  res.status(status).json(obj);
 }
