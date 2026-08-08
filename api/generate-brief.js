@@ -144,6 +144,7 @@ export default async function handler(req) {
   userContent.push({ type: "text", text: textPrompt });
 
   let anthropicRes;
+  const callStart = Date.now();
   try {
     anthropicRes = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
@@ -159,7 +160,9 @@ export default async function handler(req) {
         messages: [{ role: "user", content: userContent }],
       }),
     });
+    console.log(`[generate-brief] Anthropic call took ${Date.now() - callStart}ms, status ${anthropicRes.status}`);
   } catch (err) {
+    console.log(`[generate-brief] Anthropic call FAILED after ${Date.now() - callStart}ms: ${err.message}`);
     return json({ error: "Failed to reach Anthropic API" }, 502);
   }
 
