@@ -412,6 +412,78 @@
     rect.setAttribute('stroke-width', 2);
     svg.appendChild(rect);
 
+    if (courtType !== 'full') {
+      // Basket
+      const basket = document.createElementNS(svgNS, 'circle');
+      basket.setAttribute('cx', 260);
+      basket.setAttribute('cy', 375);
+      basket.setAttribute('r', 4);
+      basket.setAttribute('fill', 'none');
+      basket.setAttribute('stroke', '#27364a');
+      basket.setAttribute('stroke-width', 2);
+      svg.appendChild(basket);
+
+      // Backboard
+      const backboard = document.createElementNS(svgNS, 'line');
+      backboard.setAttribute('x1', 235);
+      backboard.setAttribute('y1', 385);
+      backboard.setAttribute('x2', 285);
+      backboard.setAttribute('y2', 385);
+      backboard.setAttribute('stroke', '#27364a');
+      backboard.setAttribute('stroke-width', 2);
+      svg.appendChild(backboard);
+
+      // Key / paint outline (elbows at x=207/313, y=285, baseline ~397)
+      const key = document.createElementNS(svgNS, 'rect');
+      key.setAttribute('x', 207);
+      key.setAttribute('y', 285);
+      key.setAttribute('width', 106);
+      key.setAttribute('height', 112);
+      key.setAttribute('fill', 'none');
+      key.setAttribute('stroke', '#27364a');
+      key.setAttribute('stroke-width', 1.5);
+      svg.appendChild(key);
+
+      // Free-throw circle
+      const ftCircle = document.createElementNS(svgNS, 'circle');
+      ftCircle.setAttribute('cx', 260);
+      ftCircle.setAttribute('cy', 285);
+      ftCircle.setAttribute('r', 53);
+      ftCircle.setAttribute('fill', 'none');
+      ftCircle.setAttribute('stroke', '#27364a');
+      ftCircle.setAttribute('stroke-width', 1.5);
+      svg.appendChild(ftCircle);
+
+      // Three-point arc (approximate)
+      const arc = document.createElementNS(svgNS, 'path');
+      arc.setAttribute('d', 'M 58,355 Q 260,155 462,355');
+      arc.setAttribute('fill', 'none');
+      arc.setAttribute('stroke', '#27364a');
+      arc.setAttribute('stroke-width', 1.5);
+      svg.appendChild(arc);
+    } else {
+      // Full court: two baskets, half-court line
+      [28, 472].forEach((cy) => {
+        const basket = document.createElementNS(svgNS, 'circle');
+        basket.setAttribute('cx', 260);
+        basket.setAttribute('cy', cy);
+        basket.setAttribute('r', 4);
+        basket.setAttribute('fill', 'none');
+        basket.setAttribute('stroke', '#27364a');
+        basket.setAttribute('stroke-width', 2);
+        svg.appendChild(basket);
+      });
+
+      const halfLine = document.createElementNS(svgNS, 'line');
+      halfLine.setAttribute('x1', 15);
+      halfLine.setAttribute('y1', 252);
+      halfLine.setAttribute('x2', 505);
+      halfLine.setAttribute('y2', 252);
+      halfLine.setAttribute('stroke', '#27364a');
+      halfLine.setAttribute('stroke-width', 1.5);
+      svg.appendChild(halfLine);
+    }
+
     (phase.players || []).forEach((p) => {
       if (p.startX !== p.endX || p.startY !== p.endY) {
         const line = document.createElementNS(svgNS, 'line');

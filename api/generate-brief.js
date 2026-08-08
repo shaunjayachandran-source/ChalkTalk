@@ -187,7 +187,43 @@ export default async function handler(req) {
     );
   }
 
+  brief.phases = (brief.phases || []).map(fillMissingPlayers);
+
   return json({ brief });
+}
+
+// Default supporting-position spots (half-court coordinates) used to fill
+// in any of the 5 offensive players the model didn't place in a phase.
+// This guarantees every phase always shows a full 5-player alignment,
+// regardless of how the model responded.
+const DEFAULT_SPOTS = {
+  1: { x: 260, y: 205 }, // top of key
+  2: { x: 440, y: 240 }, // right wing
+  3: { x: 80, y: 240 }, // left wing
+  4: { x: 190, y: 350 }, // left block
+  5: { x: 330, y: 350 }, // right block
+};
+
+function fillMissingPlayers(phase) {
+  const present = new Set((phase.players || []).map((p) => p.number));
+  const players = [...(phase.players || [])];
+
+  for (let num = 1; num <= 5; num++) {
+    if (!present.has(num)) {
+      const spot = DEFAULT_SPOTS[num];
+      players.push({
+        number: num,
+        startX: spot.x,
+        startY: spot.y,
+        endX: spot.x,
+        endY: spot.y,
+        hasBall: false,
+        action: `Holds floor spacing at their position.`,
+      });
+    }
+  }
+
+  return { ...phase, players };
 }
 
 /**
