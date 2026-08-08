@@ -22,6 +22,8 @@
  */
 
 import { put } from "@vercel/blob";
+import { readFile } from "fs/promises";
+import path from "path";
 
 // Runs on Vercel's default Node.js runtime (not Edge) because
 // @vercel/blob's put() relies on Node modules (net, tls, stream, etc.)
@@ -188,17 +190,13 @@ export default async function handler(req) {
 }
 
 async function validateCoachToken(req, token, program) {
-  const reqUrl = new URL(req.url);
-
   let tokens;
   try {
-    const res = await fetch(new URL("/tokens.json", reqUrl), {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`tokens.json fetch ${res.status}`);
-    tokens = await res.json();
+    const tokensPath = path.join(process.cwd(), "tokens.json");
+    const raw = await readFile(tokensPath, "utf-8");
+    tokens = JSON.parse(raw);
   } catch (err) {
-    return { ok: false, error: "Could not load token list", status: 500 };
+    return { ok: false, error: `Could not load token list: ${err.message}`, status: 500 };
   }
 
   const programTokens = tokens[program];

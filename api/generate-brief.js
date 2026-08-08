@@ -30,9 +30,12 @@
  *   or { error: string } with an appropriate status code
  */
 
-// Runs on Vercel's default Node.js runtime (not Edge) — Edge Functions
-// have a hard ~25s cap that can't be extended, and open-ended play
-// descriptions can take the model longer to reason through than that.
+import { readFile } from "fs/promises";
+import path from "path";
+
+// Runs on Vercel's default Node.js runtime — Edge Functions have a hard
+// ~25s cap that can't be extended, and open-ended play descriptions can
+// take the model longer to reason through than that.
 export const config = { maxDuration: 60 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
@@ -155,7 +158,7 @@ export default async function handler(req) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: 4000,
         system: BRIEF_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -234,20 +237,19 @@ function fillMissingPlayers(phase) {
 
 /**
  * Validates that `token` is active, has role "coach", and belongs to `program`.
- * Fetches tokens.json from the same origin, same pattern as check-token.js.
+ * Reads tokens.json directly from the filesystem (bundled with this
+ * function's deployment) rather than fetching it over the network —
+ * a self-referential network fetch back to the same deployment proved
+ * unreliable on the Node.js runtime and could hang indefinitely.
  */
 async function validateCoachToken(req, token, program) {
-  const reqUrl = new URL(req.url);
-
   let tokens;
   try {
-    const res = await fetch(new URL("/tokens.json", reqUrl), {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`tokens.json fetch ${res.status}`);
-    tokens = await res.json();
+    const tokensPath = path.join(process.cwd(), "tokens.json");
+    const raw = await readFile(tokensPath, "utf-8");
+    tokens = JSON.parse(raw);
   } catch (err) {
-    return { ok: false, error: "Could not load token list", status: 500 };
+    return { ok: false, error: `Could not load token list: ${err.message}`, status: 500 };
   }
 
   const programTokens = tokens[program];
