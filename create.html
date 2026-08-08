@@ -220,8 +220,8 @@
     <label><input type="radio" name="level" value="pro"> Pro</label>
   </div>
 
-  <label for="phaseCount">Number of Phases</label>
-  <input type="number" id="phaseCount" min="1" max="8" value="2">
+  <label for="phaseCount">Number of Phases (optional)</label>
+  <input type="number" id="phaseCount" min="1" max="8" placeholder="Leave blank to let us determine">
 
   <label for="description">Describe the Play</label>
   <textarea id="description" placeholder="e.g. 1 brings the ball up top and passes to 2 on the wing. 3 sets a back screen for 4 on the block, and 4 curls to the rim for a layup."></textarea>
@@ -311,11 +311,13 @@
     const playName = document.getElementById('playName').value.trim();
     const courtType = document.querySelector('input[name="courtType"]:checked').value;
     const level = document.querySelector('input[name="level"]:checked').value;
-    const phaseCount = document.getElementById('phaseCount').value;
+    const phaseCountRaw = document.getElementById('phaseCount').value.trim();
+    const phaseCount = phaseCountRaw ? parseInt(phaseCountRaw, 10) : null;
     const imageFile = document.getElementById('diagramImage').files[0];
 
     const payload = {
-      token, program, playName, courtType, level, phaseCount,
+      token, program, playName, courtType, level,
+      ...(phaseCount ? { phaseCount } : {}),
       description: correctionNote
         ? `${description}\n\nCORRECTION FROM COACH: ${correctionNote}`
         : description,
