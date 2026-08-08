@@ -253,6 +253,7 @@
   </div>
 
   <div id="preview-error-box" style="display:none; background: rgba(224,58,46,0.12); border: 1px solid #e03a2e; color: #ff9b90; border-radius: 8px; padding: 12px; font-size: 13px; margin-top: 16px;"></div>
+  <div id="build-status-box" style="display:none; color: var(--gold); font-size: 13px; font-family: 'DM Mono', monospace; margin-top: 16px;"></div>
 
   <button class="btn-primary" id="confirmBtn">Looks Right — Build It &rarr;</button>
   <button class="btn-secondary" id="retryBtn">Re-Analyze with Correction</button>
@@ -292,6 +293,35 @@
   function clearStatus() {
     statusBox.style.display = 'none';
   }
+
+  // Rotates through progressively-reassuring messages while a long request
+  // is in flight, so a 30-60s wait doesn't feel like nothing is happening.
+  function startProgressTicker(messages, intervalMs = 4000) {
+    let i = 0;
+    showStatus(messages[0]);
+    const timer = setInterval(() => {
+      i = Math.min(i + 1, messages.length - 1);
+      showStatus(messages[i]);
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }
+
+  const ANALYZE_MESSAGES = [
+    'Reading your description...',
+    'Mapping player positions to the court...',
+    'Working out phase-by-phase movement...',
+    'Almost there — finalizing the breakdown...',
+    'Still working — complex plays take a little longer...',
+  ];
+
+  const BUILD_MESSAGES = [
+    'Building your interactive playbook...',
+    'Drawing court diagrams for each phase...',
+    'Writing coaching notes and teaching cues...',
+    'Wiring up tooltips and tabs...',
+    'Almost done — polishing the final details...',
+    'Still working — this one has a lot of detail...',
+  ];
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -344,6 +374,7 @@
 
     showStatus('Analyzing your play...');
     analyzeBtn.disabled = true;
+    const stopTicker = startProgressTicker(ANALYZE_MESSAGES);
 
     try {
       const res = await fetch('/api/generate-brief', {
@@ -362,10 +393,10 @@
       renderPreview(currentBrief);
       builderForm.classList.add('hidden');
       previewSection.classList.remove('hidden');
-      clearStatus();
     } catch (err) {
       showError('Network error — please try again.');
     } finally {
+      stopTicker();
       analyzeBtn.disabled = false;
       clearStatus();
     }
@@ -566,9 +597,17 @@
 
   document.getElementById('confirmBtn').addEventListener('click', async () => {
     const btn = document.getElementById('confirmBtn');
+    const buildStatusBox = document.getElementById('build-status-box');
     btn.disabled = true;
-    btn.textContent = 'Building full playbook...';
     previewErrorBox.style.display = 'none';
+    buildStatusBox.style.display = 'block';
+
+    let i = 0;
+    buildStatusBox.textContent = BUILD_MESSAGES[0];
+    const tickerTimer = setInterval(() => {
+      i = Math.min(i + 1, BUILD_MESSAGES.length - 1);
+      buildStatusBox.textContent = BUILD_MESSAGES[i];
+    }, 4000);
 
     try {
       const res = await fetch('/api/generate-playbook', {
@@ -581,7 +620,6 @@
       if (!res.ok) {
         showPreviewError(data.error || 'Build failed. Please try again.');
         btn.disabled = false;
-        btn.textContent = 'Looks Right — Build It →';
         return;
       }
 
@@ -589,7 +627,9 @@
     } catch (err) {
       showPreviewError('Network error during build — please try again.');
       btn.disabled = false;
-      btn.textContent = 'Looks Right — Build It →';
+    } finally {
+      clearInterval(tickerTimer);
+      buildStatusBox.style.display = 'none';
     }
   });
 </script>
