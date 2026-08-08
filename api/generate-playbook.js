@@ -84,7 +84,8 @@ Never use jargon without a plain-language follow. Always explain WHY, not just w
 - Output ONLY the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. No markdown fences, no explanation, no preamble or postamble text of any kind.
 - All output must be pure ASCII — use HTML entities for any character outside standard ASCII (em dash as &mdash;, curly quotes as &ldquo;/&rdquo;, arrows as &rarr; etc.)
 - The file must be fully self-contained: all CSS in a <style> tag, all JS in a <script> tag, fonts via Google Fonts @import. No external dependencies except the Google Fonts import.
-- Build every phase provided in the input brief — do not omit or merge phases.`;
+- Build every phase provided in the input brief — do not omit or merge phases.
+- Every player listed in a phase's "players" array must appear on that phase's diagram, even ones who are just holding a supporting position — never drop a player because they aren't the primary actor.`;
 
 export default async function handler(req) {
   if (req.method !== "POST") {

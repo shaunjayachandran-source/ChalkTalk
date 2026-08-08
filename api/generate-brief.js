@@ -73,7 +73,11 @@ Return ONLY valid JSON, no markdown fences, no preamble, no explanation. Match t
   ]
 }
 
-Infer reasonable court positions even if the coach's description is imprecise — always fill in startX/startY/endX/endY with your best estimate using the coordinate system above. If the coach mentions a specific number of phases, honor it; otherwise infer a sensible phase count from the description. Every player who appears in a phase must have a full position, even if they didn't move (startX/Y == endX/Y).`;
+Infer reasonable court positions even if the coach's description is imprecise — always fill in startX/startY/endX/endY with your best estimate using the coordinate system above.
+
+IMPORTANT: Every phase must include ALL FIVE offensive players (numbers 1-5), even if the coach only described the action for one or two of them. For players not mentioned in the coach's description, place them in sensible, realistic supporting positions for that phase (e.g. spacing the floor at the opposite wing, corner, or top, or holding a natural help/safety position) with startX/Y equal to endX/Y (they don't move) and an action like "Holds floor spacing on the [location]" or "Maintains position as a safety valve." Never omit a player just because the coach didn't mention them — a real possession always has 5 players on the court.
+
+If the coach mentions a specific number of phases, honor it; otherwise infer a sensible phase count from the description.`;
 
 export default async function handler(req) {
   if (req.method !== "POST") {
