@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChalkTalk · Build a Play</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0d1017;
+    --panel: #121820;
+    --panel-2: #161e29;
+    --border: #1e2a3a;
+    --gold: #f0b429;
+    --white: #f2ede4;
+    --gray: #6b7a8d;
+    --teal: #1abc9c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .home-link {
+    display: inline-block;
+    color: var(--gray);
+    text-decoration: none;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .home-link:hover { color: var(--gold); }
+
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 1px;
+    color: var(--gold);
+    margin: 0 0 4px;
+  }
+
+  .subtitle {
+    color: var(--gray);
+    font-size: 14px;
+    margin-bottom: 28px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 640px;
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--white);
+    margin-bottom: 6px;
+    margin-top: 18px;
+  }
+  label:first-child { margin-top: 0; }
+
+  input[type="text"],
+  input[type="number"],
+  textarea,
+  select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--white);
+    padding: 10px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+  }
+
+  textarea { min-height: 120px; resize: vertical; }
+
+  .radio-row, .level-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .radio-row label, .level-row label {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  input[type="file"] {
+    width: 100%;
+    color: var(--gray);
+    font-size: 13px;
+  }
+
+  button {
+    font-family: 'DM Mono', monospace;
+    font-weight: 600;
+    font-size: 14px;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    cursor: pointer;
+    margin-top: 20px;
+  }
+
+  .btn-primary {
+    background: var(--gold);
+    color: #1a1400;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--white);
+    margin-left: 10px;
+  }
+
+  #error-box {
+    display: none;
+    background: rgba(224, 58, 46, 0.12);
+    border: 1px solid #e03a2e;
+    color: #ff9b90;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    margin-top: 16px;
+  }
+
+  #status-box {
+    display: none;
+    color: var(--gold);
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    margin-top: 16px;
+  }
+
+  .phase-block {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 16px;
+  }
+  .phase-block:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+  .phase-title {
+    font-family: 'Bebas Neue', sans-serif;
+    color: var(--gold);
+    font-size: 18px;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .phase-meta {
+    font-size: 13px;
+    color: var(--white);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .phase-meta strong { color: var(--gold); }
+
+  .court-preview {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: block;
+    margin: 10px 0;
+  }
+
+  .correction-box {
+    margin-top: 20px;
+  }
+
+  #builder-form.hidden, #preview-section.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<a class="home-link" href="index.html">&larr; Return to Homepage</a>
+
+<h1>BUILD A PLAY</h1>
+<div class="subtitle">Describe the play, upload a diagram if you've got one, and we'll draft it for your review.</div>
+
+<div class="card" id="builder-form">
+  <label for="playName">Play Name</label>
+  <input type="text" id="playName" placeholder="e.g. Melo 15 Elbow">
+
+  <label>Court Type</label>
+  <div class="radio-row">
+    <label><input type="radio" name="courtType" value="half" checked> Half Court</label>
+    <label><input type="radio" name="courtType" value="full"> Full Court</label>
+  </div>
+
+  <label>Coaching Level</label>
+  <div class="level-row">
+    <label><input type="radio" name="level" value="youth" checked> Youth</label>
+    <label><input type="radio" name="level" value="high-school"> High School</label>
+    <label><input type="radio" name="level" value="prep"> Prep</label>
+    <label><input type="radio" name="level" value="college"> College</label>
+    <label><input type="radio" name="level" value="pro"> Pro</label>
+  </div>
+
+  <label for="phaseCount">Number of Phases</label>
+  <input type="number" id="phaseCount" min="1" max="8" value="2">
+
+  <label for="description">Describe the Play</label>
+  <textarea id="description" placeholder="e.g. 1 brings the ball up top and passes to 2 on the wing. 3 sets a back screen for 4 on the block, and 4 curls to the rim for a layup."></textarea>
+
+  <label for="diagramImage">Hand-Drawn Diagram (optional)</label>
+  <input type="file" id="diagramImage" accept="image/*">
+
+  <div id="error-box"></div>
+  <div id="status-box"></div>
+
+  <button class="btn-primary" id="analyzeBtn">Analyze Play &rarr;</button>
+</div>
+
+<div class="card hidden" id="preview-section">
+  <h1 style="font-size: 22px;">PREVIEW</h1>
+  <div class="subtitle">Check that player positions match what you had in mind before we build the full playbook.</div>
+  <div id="phases-container"></div>
+
+  <div class="correction-box">
+    <label for="correction">Something off? Add a correction note:</label>
+    <textarea id="correction" placeholder="e.g. 3 should start in the corner, not the wing"></textarea>
+  </div>
+
+  <div id="preview-error-box" style="display:none; background: rgba(224,58,46,0.12); border: 1px solid #e03a2e; color: #ff9b90; border-radius: 8px; padding: 12px; font-size: 13px; margin-top: 16px;"></div>
+
+  <button class="btn-primary" id="confirmBtn">Looks Right — Build It &rarr;</button>
+  <button class="btn-secondary" id="retryBtn">Re-Analyze with Correction</button>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token') || '';
+  const program = params.get('program') || '';
+
+  let currentBrief = null;
+
+  const errorBox = document.getElementById('error-box');
+  const statusBox = document.getElementById('status-box');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const builderForm = document.getElementById('builder-form');
+  const previewSection = document.getElementById('preview-section');
+  const phasesContainer = document.getElementById('phases-container');
+  const previewErrorBox = document.getElementById('preview-error-box');
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+
+  function clearError() {
+    errorBox.style.display = 'none';
+  }
+
+  function showStatus(msg) {
+    statusBox.textContent = msg;
+    statusBox.style.display = 'block';
+  }
+
+  function clearStatus() {
+    statusBox.style.display = 'none';
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function analyzePlay(correctionNote) {
+    clearError();
+    previewErrorBox.style.display = 'none';
+
+    if (!token || !program) {
+      showError('Missing access token or program. Please use the link provided by your coach admin.');
+      return;
+    }
+
+    const description = document.getElementById('description').value.trim();
+    if (!description) {
+      showError('Please describe the play before analyzing.');
+      return;
+    }
+
+    const playName = document.getElementById('playName').value.trim();
+    const courtType = document.querySelector('input[name="courtType"]:checked').value;
+    const level = document.querySelector('input[name="level"]:checked').value;
+    const phaseCount = document.getElementById('phaseCount').value;
+    const imageFile = document.getElementById('diagramImage').files[0];
+
+    const payload = {
+      token, program, playName, courtType, level, phaseCount,
+      description: correctionNote
+        ? `${description}\n\nCORRECTION FROM COACH: ${correctionNote}`
+        : description,
+    };
+
+    if (imageFile) {
+      try {
+        payload.imageBase64 = await fileToBase64(imageFile);
+        payload.imageMediaType = imageFile.type;
+      } catch {
+        showError('Could not read the uploaded image. Try a different file.');
+        return;
+      }
+    }
+
+    showStatus('Analyzing your play...');
+    analyzeBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/generate-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        (correctionNote ? showPreviewError : showError)(data.error || 'Something went wrong.');
+        return;
+      }
+
+      currentBrief = data.brief;
+      renderPreview(currentBrief);
+      builderForm.classList.add('hidden');
+      previewSection.classList.remove('hidden');
+      clearStatus();
+    } catch (err) {
+      showError('Network error — please try again.');
+    } finally {
+      analyzeBtn.disabled = false;
+      clearStatus();
+    }
+  }
+
+  function showPreviewError(msg) {
+    previewErrorBox.textContent = msg;
+    previewErrorBox.style.display = 'block';
+  }
+
+  function renderPreview(brief) {
+    phasesContainer.innerHTML = '';
+    brief.phases.forEach((phase) => {
+      const block = document.createElement('div');
+      block.className = 'phase-block';
+
+      const title = document.createElement('div');
+      title.className = 'phase-title';
+      title.textContent = `PHASE ${phase.phaseNumber} — ${phase.phaseName}`;
+      block.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'phase-meta';
+      meta.innerHTML = `
+        <strong>Key action:</strong> ${escapeHtml(phase.keyAction)}<br>
+        <strong>Teaching cue:</strong> "${escapeHtml(phase.teachingCue)}"<br>
+        <strong>Common error:</strong> ${escapeHtml(phase.commonError)}
+      `;
+      block.appendChild(meta);
+
+      block.appendChild(renderCourtSVG(phase, brief.courtType));
+
+      phasesContainer.appendChild(block);
+    });
+  }
+
+  function renderCourtSVG(phase, courtType) {
+    const viewH = courtType === 'full' ? 500 : 420;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', `0 0 520 ${viewH}`);
+    svg.setAttribute('class', 'court-preview');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '260');
+
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('x', 15);
+    rect.setAttribute('y', 20);
+    rect.setAttribute('width', 490);
+    rect.setAttribute('height', viewH - 40);
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', '#27364a');
+    rect.setAttribute('stroke-width', 2);
+    svg.appendChild(rect);
+
+    (phase.players || []).forEach((p) => {
+      if (p.startX !== p.endX || p.startY !== p.endY) {
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', p.startX);
+        line.setAttribute('y1', p.startY);
+        line.setAttribute('x2', p.endX);
+        line.setAttribute('y2', p.endY);
+        line.setAttribute('stroke', '#6b7a8d');
+        line.setAttribute('stroke-width', 1.5);
+        line.setAttribute('stroke-dasharray', '4,3');
+        svg.appendChild(line);
+
+        const ghost = document.createElementNS(svgNS, 'circle');
+        ghost.setAttribute('cx', p.endX);
+        ghost.setAttribute('cy', p.endY);
+        ghost.setAttribute('r', 8);
+        ghost.setAttribute('fill', 'none');
+        ghost.setAttribute('stroke', '#6b7a8d');
+        ghost.setAttribute('stroke-dasharray', '2,2');
+        svg.appendChild(ghost);
+      }
+
+      const circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', p.startX);
+      circle.setAttribute('cy', p.startY);
+      circle.setAttribute('r', 9);
+      circle.setAttribute('fill', '#f0b429');
+      circle.setAttribute('stroke', '#ffd060');
+      svg.appendChild(circle);
+
+      const label = document.createElementNS(svgNS, 'text');
+      label.setAttribute('x', p.startX);
+      label.setAttribute('y', p.startY + 3);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', 10);
+      label.setAttribute('fill', '#0d1017');
+      label.setAttribute('font-weight', 'bold');
+      label.textContent = p.number;
+      svg.appendChild(label);
+
+      if (p.hasBall) {
+        const ball = document.createElementNS(svgNS, 'circle');
+        ball.setAttribute('cx', p.startX + 11);
+        ball.setAttribute('cy', p.startY);
+        ball.setAttribute('r', 4);
+        ball.setAttribute('fill', '#ff6b00');
+        ball.setAttribute('stroke', 'white');
+        svg.appendChild(ball);
+      }
+    });
+
+    return svg;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  analyzeBtn.addEventListener('click', () => analyzePlay(null));
+
+  document.getElementById('retryBtn').addEventListener('click', () => {
+    const note = document.getElementById('correction').value.trim();
+    if (!note) {
+      showPreviewError('Add a correction note describing what to fix, then re-analyze.');
+      return;
+    }
+    analyzePlay(note);
+  });
+
+  document.getElementById('confirmBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Building full playbook...';
+    previewErrorBox.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/generate-playbook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, program, brief: currentBrief }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showPreviewError(data.error || 'Build failed. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Looks Right — Build It →';
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      showPreviewError('Network error during build — please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Looks Right — Build It →';
+    }
+  });
+</script>
+
+</body>
+</html>
