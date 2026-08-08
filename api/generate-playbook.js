@@ -26,6 +26,10 @@ import { put } from "@vercel/blob";
 // Runs on Vercel's default Node.js runtime (not Edge) because
 // @vercel/blob's put() relies on Node modules (net, tls, stream, etc.)
 // that aren't available in the lightweight Edge runtime.
+//
+// maxDuration extended to 60s (Hobby plan max) since generating a full
+// interactive HTML playbook via Claude can exceed the 10s default.
+export const config = { maxDuration: 60 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";

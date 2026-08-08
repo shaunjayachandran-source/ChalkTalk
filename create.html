@@ -29,6 +29,11 @@
     padding: 24px;
   }
 
+  .page-container {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
   .home-link {
     display: inline-block;
     color: var(--gray);
@@ -57,7 +62,7 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 24px;
-    max-width: 640px;
+    width: 100%;
     margin-bottom: 20px;
   }
 
@@ -196,6 +201,8 @@
 </head>
 <body>
 
+<div class="page-container">
+
 <a class="home-link" href="index.html">&larr; Return to Homepage</a>
 
 <h1>BUILD A PLAY</h1>
@@ -249,6 +256,8 @@
 
   <button class="btn-primary" id="confirmBtn">Looks Right — Build It &rarr;</button>
   <button class="btn-secondary" id="retryBtn">Re-Analyze with Correction</button>
+</div>
+
 </div>
 
 <script>
