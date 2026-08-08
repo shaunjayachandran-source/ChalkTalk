@@ -23,7 +23,9 @@
 
 import { put } from "@vercel/blob";
 
-export const config = { runtime: "edge" };
+// Runs on Vercel's default Node.js runtime (not Edge) because
+// @vercel/blob's put() relies on Node modules (net, tls, stream, etc.)
+// that aren't available in the lightweight Edge runtime.
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -56,7 +58,9 @@ Each phase = one SVG diagram + one sidebar content block. Tab IDs pd-1 through p
 ## Sidebar Content (per phase)
 - h3: Phase name (Title Case)
 - Numbered coaching points (cp blocks) referencing player numbers with colored inline pill spans (p1 gold, p2 green, p3 blue, p4 purple, p5 red)
-- A ".kbox" (tan/warm background) box labeled "For Parents" or "Coach's Eye" — plain-language, analogy-driven explanation
+- A ".kbox" (tan/warm background) box — its framing depends on coaching level:
+  - If level is "youth": label it "For Parents" and write it analogy-driven, outcome-focused, for a parent watching from the stands.
+  - For all other levels (high-school, prep, college, pro): label it "Coach's Eye" or "Concept" instead, and write it as a tactical/conceptual note for players and coaches — do NOT address parents directly or use parent-in-the-stands framing unless the level is youth.
 - A ".bbridge" (teal-bordered) box explaining the STRUCTURAL connection to the next phase (omit on the final phase)
 
 ## Tooltip System
@@ -68,9 +72,9 @@ rect at x=32 y=396 width=456 height=14 fill=rgba(0,0,0,.55). Centered text x=260
 ## Content & Voice Rules — Write for THREE audiences in every phase
 1. PLAYERS: direct, actionable, spatial ("Cut hard to the left corner.")
 2. COACHES: technical, reads-based ("This is the direct cue for 4 to fill the vacated slot.")
-3. PARENTS: analogy-driven, outcome-focused, in the kbox
+3. PARENTS (youth level only, via the kbox): analogy-driven, outcome-focused. For high-school/prep/college/pro, the kbox instead serves players/coaches as a conceptual note — do not write parent-facing content unless level is youth.
 
-Never use jargon without a plain-language follow. Always explain WHY, not just what. Teaching cues are short quotable coach one-liners. Frame common errors as "what the defense wants," not player failure. Use gender-neutral language (they/them) throughout — no he/him defaults. Calibrate depth to coaching level: youth = more analogy fewer reads; high school = balanced; college/pro = full tactical depth, fewer parent notes.
+Never use jargon without a plain-language follow. Always explain WHY, not just what. Teaching cues are short quotable coach one-liners. Frame common errors as "what the defense wants," not player failure. Use gender-neutral language (they/them) throughout — no he/him defaults. Calibrate depth to coaching level: youth = more analogy, fewer reads, parent-facing kbox; high school = balanced, tactical kbox; college/pro = full tactical depth, no parent framing, more defensive reads and counter-actions.
 
 ## Required Page Elements
 - A "← Return to Homepage" pill link (class="home-link", href="index.html") placed directly above the header, styled to match the dark/gold system.
