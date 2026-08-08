@@ -2,22 +2,27 @@
  * POST /api/generate-playbook
  *
  * Step 2 of the playbook builder (BUILD MODE): takes a CONFIRMED brief
- * (the coach already reviewed and approved player positions in the
- * preview step) and generates the full interactive HTML playbook
- * using the locked ChalkTalk template standard. Saves the result to
- * Vercel Blob storage, scoped to the coach's program, and returns the
- * public URL.
+ * and generates the full interactive HTML playbook.
  *
- * Auth: same as generate-brief.js — requires a valid, active, coach-role
- * token whose program matches where the file gets written. This is
- * re-validated here independently; never trust that the brief step's
- * validation still holds by the time this runs.
+ * ARCHITECTURE NOTE: to stay within Vercel Hobby's 60s function timeout,
+ * generation is split into:
+ *   1. A deterministic HTML "shell" (fonts, CSS, tab-switching JS,
+ *      tooltip JS, progress bar, home-link) built in code -- no LLM call,
+ *      instant, and identical in structure across every play.
+ *   2. One Claude call PER PHASE, run in PARALLEL via Promise.all, each
+ *      generating only that phase's SVG diagram + sidebar content.
+ * This keeps each individual Claude call small and fast regardless of
+ * how many phases a play has, since they run concurrently rather than
+ * accumulating sequentially against the 60s cap.
+ *
+ * Auth: requires a valid, active, coach-role token whose program matches
+ * where the file gets written. Re-validated independently from the brief step.
  *
  * Body (JSON):
  *   { token: string, program: string, brief: { ...see generate-brief.js schema } }
  *
  * Response (JSON):
- *   { url: string }   — public Blob URL of the generated playbook
+ *   { url: string }   -- public Blob URL of the generated playbook
  *   or { error: string } with an appropriate status code
  */
 
@@ -25,73 +30,43 @@ import { put } from "@vercel/blob";
 import { readFile } from "fs/promises";
 import path from "path";
 
-// Runs on Vercel's default Node.js runtime (not Edge) because
-// @vercel/blob's put() relies on Node modules (net, tls, stream, etc.)
-// that aren't available in the lightweight Edge runtime.
-//
-// maxDuration extended to 60s (Hobby plan max) since generating a full
-// interactive HTML playbook via Claude can exceed the 10s default.
 export const config = { maxDuration: 60 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
-const BUILD_SYSTEM_PROMPT = `You are a master basketball coach, teacher, and visual communications expert. You generate a single, complete, self-contained HTML file implementing an interactive basketball playbook, following this locked template standard exactly.
+const PLAYER_COLORS = {
+  1: { fill: "#f0b429", stroke: "#ffd060" },
+  2: { fill: "#27ae60", stroke: "#2ecc71" },
+  3: { fill: "#2a6ae8", stroke: "#7db3ff" },
+  4: { fill: "#9b59b6", stroke: "#c39bd3" },
+  5: { fill: "#e03a2e", stroke: "#ff7b6e" },
+};
 
-## Visual Identity
-- Fonts (import from Google Fonts): Bebas Neue (player numbers, phase titles, labels), DM Mono (coaching text, captions, tooltips), DM Sans (body text)
-- Background: #0d1017 (near-black)
-- Accent/gold: #f0b429 (primary highlight, ball dot secondary color, 1's color)
-- Player colors: 1=gold #f0b429 (stroke #ffd060), 2=green #27ae60 (stroke #2ecc71), 3=blue #2a6ae8 (stroke #7db3ff), 4=purple #9b59b6 (stroke #c39bd3), 5=red #e03a2e (stroke #ff7b6e)
+const PHASE_SYSTEM_PROMPT = `You are a master basketball coach and visual communications expert. You generate ONE PHASE of an interactive basketball playbook -- just the SVG diagram and sidebar content for this single phase, not the full page.
 
-## SVG Coordinate System — Half Court (viewBox 0 0 520 420)
-Court image area: x=15 y=110 width=489 height=287. Basket cy≈370. Elbow left cx=207, right cx=313, both y≈285. Top slots cy≈205. Right corner cx≈462 cy≈355. Left corner cx≈58 cy≈355. Center top cx=260 cy≈185. Since no court background image is embedded in this generator, draw a simple court outline (rect + free-throw circle + three-point arc using path) in #27364a strokes instead of an embedded photo.
+Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema:
+{
+  "diagramSvg": "<svg>...</svg> markup as a string",
+  "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
+}
 
-## SVG Coordinate System — Full Court (viewBox 0 0 520 500)
-Court image area: x=8 y=4 width=504 height=464. Defensive basket cy≈28. Half-court line y≈252. Attacking basket cy≈472. Court orientation: offense attacks the bottom basket.
+## SVG Diagram Rules
+- Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). Draw a simple court outline: rect border, key/paint rectangle (elbows at x=207/313, y=285, baseline ~397), free-throw circle (cx=260 cy=285 r=53), three-point arc (path from 58,355 through 260,155 to 462,355), basket (small circle near cy=375), backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2.
+- Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus an arrow/line connecting start to end (solid line = dribble/primary movement, dashed stroke-dasharray "7,4" = pass, stroke-width 2.5 primary / 2.0 secondary). Arrow tail/tip must touch circle edges, never float in open space. Players who don't move: solid circle only, no ghost, no line.
+- Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
+- Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
+- Use unique marker/gradient IDs prefixed with the phase number if any defs are needed, to avoid collisions when multiple phases' SVGs sit in the same page.
 
-## Circle & Arrow Standards
-- Solid player circles r=18, font-size=17 (Bebas Neue), fill = player's color, stroke = player's lighter stroke color. Solid circle marks WHERE A PLAYER BEGINS a phase.
-- Ghost circles r=8, faded, stroke-dasharray 3,3, no fill — mark WHERE A PLAYER ENDS a phase. Players who don't move: solid circle only, no ghost.
-- Ball dot r=6 fill=#ff6b00 stroke=white, placed on the side of the ball-handler's circle closest to the basket being attacked.
-- Arrow tail anchors to the solid (starting) circle edge; tip anchors to the ghost (ending) circle edge — both offset by radius along the direction of travel. Never floating in open space.
-- Solid arrow = dribble/primary movement. Dashed arrow (stroke-dasharray 7,4) = pass or secondary movement. Stroke width 2.5 primary, 2.0 secondary.
-- Marker IDs must be unique per phase (prefix with phase number, e.g. au1, ag1 for phase 1's gold/green arrows).
-
-## Phase Tab System
-Each phase = one SVG diagram + one sidebar content block. Tab IDs pd-1 through pd-N (diagrams), sb-1 through sb-N (sidebar). Active tab gets class "active". Include a simple progress bar that updates on tab change. Include working JavaScript to switch tabs on click.
-
-## Sidebar Content (per phase)
-- h3: Phase name (Title Case)
-- Numbered coaching points (cp blocks) referencing player numbers with colored inline pill spans (p1 gold, p2 green, p3 blue, p4 purple, p5 red)
-- A ".kbox" (tan/warm background) box — its framing depends on coaching level:
-  - If level is "youth": label it "For Parents" and write it analogy-driven, outcome-focused, for a parent watching from the stands.
-  - For all other levels (high-school, prep, college, pro): label it "Coach's Eye" or "Concept" instead, and write it as a tactical/conceptual note for players and coaches — do NOT address parents directly or use parent-in-the-stands framing unless the level is youth.
-- A ".bbridge" (teal-bordered) box explaining the STRUCTURAL connection to the next phase (omit on the final phase)
-
-## Tooltip System
-Every player circle (class "pc") has data-l (short label, e.g. "1 — POINT GUARD") and data-t (2-4 sentence coaching detail). Include a #tip div, absolutely positioned, shown on hover via JavaScript, following the mouse.
-
-## Footer Caption Bar (each phase SVG)
-rect at x=32 y=396 width=456 height=14 fill=rgba(0,0,0,.55). Centered text x=260 font-size=10 fill=#f0b429 font-weight=600. Format: "PHASE NAME · Key action · Key action". Must fit one line, ~80 char max.
-
-## Content & Voice Rules — Write for THREE audiences in every phase
-1. PLAYERS: direct, actionable, spatial ("Cut hard to the left corner.")
-2. COACHES: technical, reads-based ("This is the direct cue for 4 to fill the vacated slot.")
-3. PARENTS (youth level only, via the kbox): analogy-driven, outcome-focused. For high-school/prep/college/pro, the kbox instead serves players/coaches as a conceptual note — do not write parent-facing content unless level is youth.
-
-Never use jargon without a plain-language follow. Always explain WHY, not just what. Teaching cues are short quotable coach one-liners. Frame common errors as "what the defense wants," not player failure. Use gender-neutral language (they/them) throughout — no he/him defaults. Calibrate depth to coaching level: youth = more analogy, fewer reads, parent-facing kbox; high school = balanced, tactical kbox; college/pro = full tactical depth, no parent framing, more defensive reads and counter-actions.
-
-## Required Page Elements
-- A "← Return to Homepage" pill link (class="home-link", href="index.html") placed directly above the header, styled to match the dark/gold system.
-- Page title in Bebas Neue.
-
-## Output Rules
-- Output ONLY the complete HTML document, starting with <!DOCTYPE html> and ending with </html>. No markdown fences, no explanation, no preamble or postamble text of any kind.
-- All output must be pure ASCII — use HTML entities for any character outside standard ASCII (em dash as &mdash;, curly quotes as &ldquo;/&rdquo;, arrows as &rarr; etc.)
-- The file must be fully self-contained: all CSS in a <style> tag, all JS in a <script> tag, fonts via Google Fonts @import. No external dependencies except the Google Fonts import.
-- Build every phase provided in the input brief — do not omit or merge phases.
-- Every player listed in a phase's "players" array must appear on that phase's diagram, even ones who are just holding a supporting position — never drop a player because they aren't the primary actor.`;
+## Sidebar HTML Rules
+- Wrap in a single top-level <div> (this fragment gets inserted into a container, don't repeat page chrome).
+- <h3> phase name in Title Case.
+- Numbered coaching points as <div class="cp"><span class="cp-n">N</span><span class="cp-t">...</span></div>, referencing players via <span class="pill p1">1</span> (p1 gold, p2 green, p3 blue, p4 purple, p5 red).
+- One ".kbox" div: if level is "youth", label it "For Parents" and write analogy-driven content for a parent in the stands. For any other level, label it "Coach's Eye" or "Concept" and write tactical/conceptual content for players/coaches -- never address parents directly outside youth level.
+- One ".bbridge" div explaining the structural connection to the NEXT phase (omit entirely if this is the final phase -- the caller will tell you if it is).
+- Voice: PLAYERS get direct/actionable language, COACHES get technical/reads-based language, both woven into the coaching points. Frame common errors as "what the defense wants," never player failure. Use they/them, no he/him defaults. Calibrate depth to coaching level (youth = more analogy fewer reads; college/pro = full tactical depth, more defensive reads/counters).
+- All output pure ASCII -- use HTML entities for anything outside standard ASCII (&mdash; &ldquo; &rdquo; &rarr; etc.)`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -106,70 +81,28 @@ export default async function handler(req, res) {
 
   const { token, program, brief } = body;
 
-  if (!token || !program || !brief) {
-    return sendJson(res, { error: "Missing required fields" }, 400);
+  if (!token || !program || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
+    return sendJson(res, { error: "Missing or invalid brief" }, 400);
   }
 
-  // ---- Auth: re-validate independently, never trust the brief step ----
   const authResult = await validateCoachToken(token, program);
   if (!authResult.ok) {
     return sendJson(res, { error: authResult.error }, authResult.status);
   }
 
-  // ---- Call Claude to build the full HTML ----
-  let anthropicRes;
+  let phaseResults;
   try {
-    anthropicRes = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 16000,
-        system: BUILD_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `Build the complete interactive HTML playbook for this confirmed brief:\n\n${JSON.stringify(
-              brief,
-              null,
-              2
-            )}`,
-          },
-        ],
-      }),
-    });
-  } catch (err) {
-    return sendJson(res, { error: "Failed to reach Anthropic API" }, 502);
-  }
-
-  if (!anthropicRes.ok) {
-    const errText = await anthropicRes.text();
-    return sendJson(res, { error: `Anthropic API error: ${errText}` }, 502);
-  }
-
-  const data = await anthropicRes.json();
-  const textBlock = (data.content || []).find((b) => b.type === "text");
-
-  if (!textBlock) {
-    return sendJson(res, { error: "No HTML returned from model" }, 502);
-  }
-
-  let html = textBlock.text.trim();
-  html = html.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "");
-
-  if (!html.toLowerCase().startsWith("<!doctype html")) {
-    return sendJson(
-      res,
-      { error: "Model did not return a valid HTML document", raw: html.slice(0, 300) },
-      502
+    phaseResults = await Promise.all(
+      brief.phases.map((phase, idx) =>
+        generatePhaseContent(phase, brief, idx === brief.phases.length - 1)
+      )
     );
+  } catch (err) {
+    return sendJson(res, { error: `Phase generation failed: ${err.message}` }, 502);
   }
 
-  // ---- Save to Blob, scoped to this program ----
+  const html = buildShellHtml(brief, phaseResults);
+
   const slug = slugify(brief.playName || "untitled-play");
   const blobPath = `generated/${program}/${slug}.html`;
 
@@ -186,6 +119,180 @@ export default async function handler(req, res) {
   }
 
   return sendJson(res, { url: blobResult.url });
+}
+
+async function generatePhaseContent(phase, brief, isFinalPhase) {
+  const userPrompt = `Generate the diagram and sidebar for this phase.
+
+Play: ${brief.playName || "(untitled)"}
+Court type: ${brief.courtType || "half"}
+Coaching level: ${brief.level || "high-school"}
+This is ${isFinalPhase ? "the FINAL phase (omit the bbridge)" : "NOT the final phase (include a bbridge to the next phase)"}.
+
+Phase data:
+${JSON.stringify(phase, null, 2)}`;
+
+  const res = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 4000,
+      system: PHASE_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Anthropic API error on phase ${phase.phaseNumber}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const textBlock = (data.content || []).find((b) => b.type === "text");
+  if (!textBlock) {
+    throw new Error(`No text response for phase ${phase.phaseNumber}`);
+  }
+
+  const cleaned = textBlock.text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(`Invalid JSON for phase ${phase.phaseNumber}`);
+  }
+
+  return {
+    phaseNumber: phase.phaseNumber,
+    phaseName: phase.phaseName,
+    diagramSvg: parsed.diagramSvg || "",
+    sidebarHtml: parsed.sidebarHtml || "",
+  };
+}
+
+function buildShellHtml(brief, phaseResults) {
+  const tabs = phaseResults
+    .map(
+      (p, i) =>
+        `<button class="tab-btn${i === 0 ? " active" : ""}" data-phase="${p.phaseNumber}" onclick="switchPhase(${p.phaseNumber})">PHASE ${p.phaseNumber}<br><span class="tab-name">${escapeHtml(p.phaseName)}</span></button>`
+    )
+    .join("\n");
+
+  const diagrams = phaseResults
+    .map(
+      (p, i) =>
+        `<div class="phase-diagram${i === 0 ? " active" : ""}" id="pd-${p.phaseNumber}">${p.diagramSvg}</div>`
+    )
+    .join("\n");
+
+  const sidebars = phaseResults
+    .map(
+      (p, i) =>
+        `<div class="phase-sidebar${i === 0 ? " active" : ""}" id="sb-${p.phaseNumber}">${p.sidebarHtml}</div>`
+    )
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(brief.playName || "ChalkTalk Play")}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+  :root {
+    --bg: #0d1017; --panel: #121820; --panel-2: #161e29; --border: #1e2a3a;
+    --gold: #f0b429; --white: #f2ede4; --gray: #6b7a8d; --teal: #1abc9c;
+    --kbox-bg: #2a2318; --kbox-border: #5c4a1f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--white); font-family: 'DM Sans', sans-serif; padding: 24px; }
+  .home-link { display: inline-block; color: var(--gray); text-decoration: none; font-size: 13px; margin-bottom: 16px; }
+  .home-link:hover { color: var(--gold); }
+  h1 { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 1px; color: var(--gold); margin: 0 0 20px; }
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--gold); transition: width 0.3s; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .tab-btn { font-family: 'DM Mono', monospace; font-size: 11px; background: var(--panel-2); border: 1px solid var(--border); color: var(--gray); padding: 8px 14px; border-radius: 8px; cursor: pointer; text-align: left; }
+  .tab-btn.active { border-color: var(--gold); color: var(--gold); }
+  .tab-name { font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600; }
+  .layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .phase-diagram, .phase-sidebar { display: none; }
+  .phase-diagram.active, .phase-sidebar.active { display: block; }
+  .phase-diagram svg { width: 100%; height: auto; background: #0a0d12; border: 1px solid var(--border); border-radius: 8px; }
+  .phase-sidebar { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .phase-sidebar h3 { font-family: 'Bebas Neue', sans-serif; color: var(--gold); font-size: 22px; letter-spacing: 0.5px; margin-top: 0; }
+  .cp { display: flex; gap: 10px; margin-bottom: 10px; font-size: 14px; line-height: 1.5; }
+  .cp-n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--gold); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; font-weight: 700; color: #0d1017; }
+  .p1 { background: #f0b429; } .p2 { background: #27ae60; } .p3 { background: #7db3ff; } .p4 { background: #c39bd3; } .p5 { background: #ff7b6e; }
+  .kbox { background: var(--kbox-bg); border: 1px solid var(--kbox-border); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+  .bbridge { background: rgba(26,188,156,0.08); border: 1px solid var(--teal); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
+  #tip { position: absolute; display: none; background: #1a1400; border: 1px solid var(--gold); color: var(--white); padding: 8px 12px; border-radius: 6px; font-size: 12px; max-width: 240px; z-index: 100; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<a class="home-link" href="index.html">&larr; Return to Homepage</a>
+<h1>${escapeHtml(brief.playName || "PLAY")}</h1>
+
+<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width: ${Math.round(100 / phaseResults.length)}%"></div></div>
+
+<div class="tabs">
+${tabs}
+</div>
+
+<div class="layout">
+  <div class="diagrams">
+${diagrams}
+  </div>
+  <div class="sidebars">
+${sidebars}
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+  const totalPhases = ${phaseResults.length};
+  function switchPhase(n) {
+    document.querySelectorAll('.phase-diagram, .phase-sidebar').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('pd-' + n).classList.add('active');
+    document.getElementById('sb-' + n).classList.add('active');
+    document.querySelector('.tab-btn[data-phase="' + n + '"]').classList.add('active');
+    document.getElementById('progressFill').style.width = Math.round((n / totalPhases) * 100) + '%';
+  }
+  const tip = document.getElementById('tip');
+  document.addEventListener('mouseover', (e) => {
+    const pc = e.target.closest('.pc');
+    if (!pc) return;
+    tip.textContent = pc.getAttribute('data-t') || pc.getAttribute('data-l') || '';
+    tip.style.display = 'block';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (tip.style.display === 'block') {
+      tip.style.left = (e.pageX + 12) + 'px';
+      tip.style.top = (e.pageY + 12) + 'px';
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('.pc')) tip.style.display = 'none';
+  });
+</script>
+
+</body>
+</html>`;
 }
 
 async function validateCoachToken(token, program) {
@@ -213,12 +320,21 @@ async function validateCoachToken(token, program) {
 }
 
 function slugify(str) {
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 60) || "untitled-play";
+  return (
+    str
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 60) || "untitled-play"
+  );
+}
+
+function escapeHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function sendJson(res, obj, status = 200) {
