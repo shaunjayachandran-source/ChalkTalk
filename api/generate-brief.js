@@ -30,8 +30,7 @@
  *   or { error: string } with an appropriate status code
  */
 
-import { readFile } from "fs/promises";
-import path from "path";
+import { validateCoachToken } from "./_lib/validate-token.js";
 
 // Runs on Vercel's default Node.js runtime — Edge Functions have a hard
 // ~25s cap that can't be extended, and open-ended play descriptions can
@@ -233,37 +232,6 @@ function fillMissingPlayers(phase) {
   }
 
   return { ...phase, players };
-}
-
-/**
- * Validates that `token` is active, has role "coach", and belongs to `program`.
- * Reads tokens.json directly from the filesystem (bundled with this
- * function's deployment) rather than fetching it over the network —
- * a self-referential network fetch back to the same deployment proved
- * unreliable on the Node.js runtime and could hang indefinitely.
- */
-async function validateCoachToken(token, program) {
-  let tokens;
-  try {
-    const tokensPath = path.join(process.cwd(), "tokens.json");
-    const raw = await readFile(tokensPath, "utf-8");
-    tokens = JSON.parse(raw);
-  } catch (err) {
-    return { ok: false, error: `Could not load token list: ${err.message}`, status: 500 };
-  }
-
-  const programTokens = tokens[program];
-  const entry = programTokens && programTokens[token];
-
-  if (!entry || entry.active !== true) {
-    return { ok: false, error: "Invalid or inactive token", status: 403 };
-  }
-
-  if (entry.role !== "coach") {
-    return { ok: false, error: "Only coaches can generate plays", status: 403 };
-  }
-
-  return { ok: true };
 }
 
 function sendJson(res, obj, status = 200) {

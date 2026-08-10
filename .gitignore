@@ -6,3 +6,8 @@ node_modules/
 .vercel
 *.log
 .DS_Store
+
+# Local debug artifacts from testing the Anthropic API call shape --
+# should never be committed (harmless content, but repo hygiene).
+test_payload.json
+response_output.json
