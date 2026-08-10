@@ -1,4 +1,5 @@
 {
+  "outputDirectory": "public",
   "rewrites": [
     { "source": "/playbooks/:program/:file*", "destination": "/api/serve-playbook?program=:program&file=:file*" },
     { "source": "/tokens.json", "destination": "/api/blocked-asset" },
