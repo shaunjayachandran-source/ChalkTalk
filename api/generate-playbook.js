@@ -27,8 +27,7 @@
  */
 
 import { put } from "@vercel/blob";
-import { readFile } from "fs/promises";
-import path from "path";
+import { validateCoachToken } from "./_lib/validate-token.js";
 
 export const config = { maxDuration: 60 };
 
@@ -294,30 +293,6 @@ ${sidebars}
 
 </body>
 </html>`;
-}
-
-async function validateCoachToken(token, program) {
-  let tokens;
-  try {
-    const tokensPath = path.join(process.cwd(), "tokens.json");
-    const raw = await readFile(tokensPath, "utf-8");
-    tokens = JSON.parse(raw);
-  } catch (err) {
-    return { ok: false, error: `Could not load token list: ${err.message}`, status: 500 };
-  }
-
-  const programTokens = tokens[program];
-  const entry = programTokens && programTokens[token];
-
-  if (!entry || entry.active !== true) {
-    return { ok: false, error: "Invalid or inactive token", status: 403 };
-  }
-
-  if (entry.role !== "coach") {
-    return { ok: false, error: "Only coaches can generate plays", status: 403 };
-  }
-
-  return { ok: true };
 }
 
 function slugify(str) {

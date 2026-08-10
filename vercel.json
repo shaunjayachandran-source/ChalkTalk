@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/playbooks/:program/:file*", "destination": "/api/serve-playbook?program=:program&file=:file*" },
+    { "source": "/tokens.json", "destination": "/api/blocked-asset" },
+    { "source": "/test_payload.json", "destination": "/api/blocked-asset" },
+    { "source": "/response_output.json", "destination": "/api/blocked-asset" }
+  ]
+}
