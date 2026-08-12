@@ -108,19 +108,60 @@
     <div id="msg"></div>
   </form>
 
+  <!-- Shown instead of the login form when the coach arrives here via a
+       Supabase "reset password" or "magic link" email. Those links carry a
+       recovery token in the URL that supabase-js picks up automatically and
+       fires a PASSWORD_RECOVERY auth event for -- this is the landing page
+       that lets them actually set a new password once that happens. -->
+  <form class="card" id="reset-form" style="display:none;">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Set a new password</p>
+
+    <label for="new-password">New password</label>
+    <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
+
+    <label for="confirm-password">Confirm password</label>
+    <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+
+    <button type="submit" id="reset-submit-btn">Save new password</button>
+    <div id="reset-msg"></div>
+  </form>
+
   <script type="module">
     import { supabase } from "/js/supabase-client.js";
 
-    const form = document.getElementById("login-form");
+    const loginForm = document.getElementById("login-form");
     const msg = document.getElementById("msg");
     const btn = document.getElementById("submit-btn");
 
-    // If already logged in, skip straight to the dashboard.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.href = "/dashboard.html";
+    const resetForm = document.getElementById("reset-form");
+    const resetMsg = document.getElementById("reset-msg");
+    const resetBtn = document.getElementById("reset-submit-btn");
+
+    function showResetForm() {
+      loginForm.style.display = "none";
+      resetForm.style.display = "block";
+    }
+
+    // Supabase fires this when the URL contains a valid recovery/magic-link
+    // token (it parses the URL itself -- we don't need to touch location.hash).
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        showResetForm();
+      }
     });
 
-    form.addEventListener("submit", async (e) => {
+    // If already logged in with a normal session (not a recovery link),
+    // skip straight to the dashboard. Recovery sessions are handled above
+    // instead, so check the URL for that first.
+    const isRecoveryLink = window.location.hash.includes("type=recovery");
+    if (!isRecoveryLink) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) window.location.href = "/dashboard.html";
+      });
+    }
+
+    loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       msg.textContent = "";
       msg.className = "";
@@ -137,6 +178,36 @@
         msg.className = "error";
         btn.disabled = false;
         btn.textContent = "Log in";
+        return;
+      }
+
+      window.location.href = "/dashboard.html";
+    });
+
+    resetForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      resetMsg.textContent = "";
+      resetMsg.className = "";
+
+      const newPassword = document.getElementById("new-password").value;
+      const confirmPassword = document.getElementById("confirm-password").value;
+
+      if (newPassword !== confirmPassword) {
+        resetMsg.textContent = "Passwords don't match.";
+        resetMsg.className = "error";
+        return;
+      }
+
+      resetBtn.disabled = true;
+      resetBtn.textContent = "Saving...";
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+        resetMsg.textContent = error.message;
+        resetMsg.className = "error";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Save new password";
         return;
       }
 
