@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — Coach Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1017;
+    --gold: #f0b429;
+    --gold-stroke: #ffd060;
+    --text: #e8e6e0;
+    --muted: #8b93a1;
+    --card: #151a24;
+    --border: #262d3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px 28px;
+  }
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 34px;
+    color: var(--gold);
+    margin: 0 0 4px;
+  }
+  p.sub {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0d1017;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+  button {
+    width: 100%;
+    margin-top: 22px;
+    padding: 11px;
+    background: var(--gold);
+    color: #0d1017;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #msg {
+    margin-top: 14px;
+    font-size: 13px;
+    min-height: 18px;
+  }
+  #msg.error { color: #ff7b6e; }
+  #msg.info { color: var(--muted); }
+</style>
+</head>
+<body>
+  <form class="card" id="login-form">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Coach login</p>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" required autocomplete="email" />
+
+    <label for="password">Password</label>
+    <input type="password" id="password" required autocomplete="current-password" />
+
+    <button type="submit" id="submit-btn">Log in</button>
+    <div id="msg"></div>
+  </form>
+
+  <script type="module">
+    import { supabase } from "/js/supabase-client.js";
+
+    const form = document.getElementById("login-form");
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("submit-btn");
+
+    // If already logged in, skip straight to the dashboard.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) window.location.href = "/dashboard.html";
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.textContent = "";
+      msg.className = "";
+      btn.disabled = true;
+      btn.textContent = "Logging in...";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        msg.textContent = error.message;
+        msg.className = "error";
+        btn.disabled = false;
+        btn.textContent = "Log in";
+        return;
+      }
+
+      window.location.href = "/dashboard.html";
+    });
+  </script>
+</body>
+</html>
