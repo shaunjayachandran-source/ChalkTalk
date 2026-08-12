@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1017;
+    --gold: #f0b429;
+    --text: #e8e6e0;
+    --muted: #8b93a1;
+    --card: #151a24;
+    --border: #262d3a;
+    --green: #27ae60;
+    --red: #ff7b6e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    color: var(--gold);
+    font-size: 26px;
+    margin: 0;
+    letter-spacing: 1px;
+  }
+  header button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.5px;
+    font-size: 20px;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  .card .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 11px;
+  }
+  .pill.player { background: rgba(39,174,96,.18); color: var(--green); }
+  .pill.parent { background: rgba(240,180,41,.18); color: var(--gold); }
+  .pill.coach { background: rgba(123,179,255,.18); color: #7db3ff; }
+  .pill.revoked { background: rgba(255,123,110,.18); color: var(--red); }
+  .pill.active { background: rgba(39,174,96,.18); color: var(--green); }
+  button.action {
+    background: var(--gold);
+    color: #0d1017;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+  }
+  button.action.danger { background: var(--red); }
+  .add-form { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .add-form input, .add-form select {
+    background: #0d1017;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+  }
+  #token-reveal {
+    display: none;
+    background: rgba(240,180,41,.1);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 14px;
+    font-size: 12px;
+    word-break: break-all;
+  }
+  #empty-state, #loading { color: var(--muted); font-size: 13px; padding: 20px 0; }
+  select#program-select {
+    background: #0d1017;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ChalkTalk</h1>
+  <button id="logout-btn">Log out</button>
+</header>
+
+<main>
+  <div id="loading">Loading your programs...</div>
+  <div id="content" style="display:none;">
+    <label style="color:var(--muted); font-size:12px; display:block; margin-bottom:6px;">Program</label>
+    <select id="program-select"></select>
+
+    <div class="card">
+      <h2>Plays</h2>
+      <div class="sub">Plays generated for this program. Building new ones still happens on the existing Create page for now.</div>
+      <table id="plays-table">
+        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="plays-empty" style="display:none; color:var(--muted); font-size:13px; padding-top:8px;">No plays yet for this program.</div>
+    </div>
+
+    <div class="card">
+      <h2>Team members</h2>
+      <div class="sub">Players, parents, and other coaches with a share link into this program.</div>
+      <table id="members-table">
+        <thead><tr><th>Name</th><th>Role</th><th>Link status</th><th>Last used</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="add-form">
+        <input type="text" id="new-member-name" placeholder="Name" />
+        <select id="new-member-role">
+          <option value="player">Player</option>
+          <option value="parent">Parent</option>
+          <option value="coach">Coach</option>
+        </select>
+        <button class="action" id="add-member-btn">Add team member + generate link</button>
+      </div>
+
+      <div id="token-reveal"></div>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+  import { supabase, requireSession } from "/js/supabase-client.js";
+
+  let programs = [];
+  let currentProgramId = null;
+
+  async function sha256Hex(text) {
+    const data = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function randomToken(prefix) {
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    const b64url = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return `${prefix}-${b64url}`;
+  }
+
+  async function loadPrograms() {
+    const { data, error } = await supabase.from("programs").select("id, slug, name").order("name");
+    if (error) {
+      document.getElementById("loading").textContent = "Couldn't load programs: " + error.message;
+      return;
+    }
+    programs = data || [];
+    const select = document.getElementById("program-select");
+    select.innerHTML = programs.map(p => `<option value="${p.id}">${p.name} (${p.slug})</option>`).join("");
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("content").style.display = "block";
+    if (programs.length) {
+      currentProgramId = programs[0].id;
+      await loadProgramDetail(currentProgramId);
+    }
+    select.addEventListener("change", async (e) => {
+      currentProgramId = e.target.value;
+      document.getElementById("token-reveal").style.display = "none";
+      await loadProgramDetail(currentProgramId);
+    });
+  }
+
+  async function loadProgramDetail(programId) {
+    await Promise.all([loadPlays(programId), loadMembers(programId)]);
+  }
+
+  async function loadPlays(programId) {
+    const { data, error } = await supabase
+      .from("plays")
+      .select("title, play_type, status, updated_at")
+      .eq("program_id", programId)
+      .order("updated_at", { ascending: false });
+
+    const tbody = document.querySelector("#plays-table tbody");
+    const empty = document.getElementById("plays-empty");
+    tbody.innerHTML = "";
+    if (error || !data || data.length === 0) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    for (const play of data) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${play.title}</td>
+        <td>${play.play_type || "—"}</td>
+        <td>${play.status}</td>
+        <td>${new Date(play.updated_at).toLocaleDateString()}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadMembers(programId) {
+    const { data: members, error } = await supabase
+      .from("team_members")
+      .select("id, name, role")
+      .eq("program_id", programId)
+      .order("name");
+
+    const tbody = document.querySelector("#members-table tbody");
+    tbody.innerHTML = "";
+    if (error || !members) return;
+
+    const { data: links } = await supabase
+      .from("access_links")
+      .select("id, team_member_id, revoked_at, last_used_at")
+      .eq("program_id", programId);
+
+    for (const member of members) {
+      const memberLinks = (links || []).filter(l => l.team_member_id === member.id);
+      const activeLink = memberLinks.find(l => !l.revoked_at);
+      const status = activeLink
+        ? `<span class="pill active">active</span>`
+        : `<span class="pill revoked">no active link</span>`;
+      const lastUsed = activeLink?.last_used_at
+        ? new Date(activeLink.last_used_at).toLocaleDateString()
+        : "never";
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${member.name}</td>
+        <td><span class="pill ${member.role}">${member.role}</span></td>
+        <td>${status}</td>
+        <td>${lastUsed}</td>
+        <td>${activeLink ? `<button class="action danger" data-link-id="${activeLink.id}">Revoke</button>` : ""}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-link-id]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Revoking...";
+        const { error } = await supabase
+          .from("access_links")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("id", btn.dataset.linkId);
+        if (error) {
+          alert("Couldn't revoke: " + error.message);
+          btn.disabled = false;
+          btn.textContent = "Revoke";
+          return;
+        }
+        await loadMembers(currentProgramId);
+      });
+    });
+  }
+
+  document.getElementById("add-member-btn").addEventListener("click", async () => {
+    const nameInput = document.getElementById("new-member-name");
+    const roleSelect = document.getElementById("new-member-role");
+    const name = nameInput.value.trim();
+    const role = roleSelect.value;
+    if (!name || !currentProgramId) return;
+
+    const btn = document.getElementById("add-member-btn");
+    btn.disabled = true;
+    btn.textContent = "Adding...";
+
+    const { data: memberRow, error: memberErr } = await supabase
+      .from("team_members")
+      .insert({ program_id: currentProgramId, name, role })
+      .select()
+      .single();
+
+    if (memberErr) {
+      alert("Couldn't add team member: " + memberErr.message);
+      btn.disabled = false;
+      btn.textContent = "Add team member + generate link";
+      return;
+    }
+
+    const token = randomToken(role);
+    const tokenHash = await sha256Hex(token);
+
+    const { data: session } = await supabase.auth.getSession();
+    const { error: linkErr } = await supabase.from("access_links").insert({
+      program_id: currentProgramId,
+      team_member_id: memberRow.id,
+      token_hash: tokenHash,
+      role,
+      created_by: session.session.user.id,
+    });
+
+    btn.disabled = false;
+    btn.textContent = "Add team member + generate link";
+
+    if (linkErr) {
+      alert("Team member added, but the link failed to generate: " + linkErr.message);
+      await loadMembers(currentProgramId);
+      return;
+    }
+
+    nameInput.value = "";
+    const reveal = document.getElementById("token-reveal");
+    reveal.style.display = "block";
+    reveal.innerHTML = `
+      <strong>Copy this token now — it won't be shown again.</strong><br/>
+      This link isn't wired into the live site yet (that's a later build step), but the record is saved:<br/>
+      <code>${token}</code>
+    `;
+
+    await loadMembers(currentProgramId);
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login.html";
+  });
+
+  (async () => {
+    const session = await requireSession();
+    if (!session) return;
+    await loadPrograms();
+  })();
+</script>
+</body>
+</html>
