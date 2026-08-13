@@ -221,6 +221,14 @@
     <label><input type="radio" name="courtType" value="full"> Full Court</label>
   </div>
 
+  <div id="orientation-row-wrap">
+    <label>Basket Position</label>
+    <div class="radio-row">
+      <label><input type="radio" name="basketOrientation" value="down" checked> Basket at Bottom (Down)</label>
+      <label><input type="radio" name="basketOrientation" value="up"> Basket at Top (Up)</label>
+    </div>
+  </div>
+
   <label>Coaching Level</label>
   <div class="level-row">
     <label><input type="radio" name="level" value="youth" checked> Youth</label>
@@ -256,6 +264,7 @@
   </div>
 
   <div id="preview-error-box" style="display:none; background: rgba(224,58,46,0.12); border: 1px solid #e03a2e; color: #ff9b90; border-radius: 8px; padding: 12px; font-size: 13px; margin-top: 16px;"></div>
+  <div id="preview-status-box" style="display:none; color: var(--gold); font-size: 13px; font-family: 'DM Mono', monospace; margin-top: 16px;"></div>
   <div id="build-status-box" style="display:none; color: var(--gold); font-size: 13px; font-family: 'DM Mono', monospace; margin-top: 16px;"></div>
 
   <button class="btn-primary" id="confirmBtn">Looks Right — Build It &rarr;</button>
@@ -272,12 +281,26 @@
 
   const errorBox = document.getElementById('error-box');
   const statusBox = document.getElementById('status-box');
+  const previewStatusBox = document.getElementById('preview-status-box');
   const analyzeBtn = document.getElementById('analyzeBtn');
+  const retryBtn = document.getElementById('retryBtn');
   const builderForm = document.getElementById('builder-form');
   const previewSection = document.getElementById('preview-section');
   const phasesContainer = document.getElementById('phases-container');
   const previewErrorBox = document.getElementById('preview-error-box');
   const programSelect = document.getElementById('programSelect');
+  const orientationRowWrap = document.getElementById('orientation-row-wrap');
+
+  // The basket-position (up/down) choice only makes sense for half court --
+  // full court always shows both baskets. Hide it when Full Court is picked.
+  function updateOrientationVisibility() {
+    const courtType = document.querySelector('input[name="courtType"]:checked').value;
+    orientationRowWrap.style.display = courtType === 'full' ? 'none' : 'block';
+  }
+  document.querySelectorAll('input[name="courtType"]').forEach((el) =>
+    el.addEventListener('change', updateOrientationVisibility)
+  );
+  updateOrientationVisibility();
 
   async function loadPrograms() {
     const { data, error } = await supabase.from('programs').select('id, slug, name').order('name');
@@ -316,13 +339,24 @@
     errorBox.style.display = 'none';
   }
 
+  // Which status box is actually visible depends on whether we're on the
+  // builder form (first analyze) or the preview screen (re-analyze with a
+  // correction) -- writing to the wrong one silently updates a hidden
+  // element, which is why "Re-Analyze with Correction" used to look like it
+  // wasn't doing anything (it was -- you just couldn't see the progress).
+  function activeStatusBox() {
+    return previewSection.classList.contains('hidden') ? statusBox : previewStatusBox;
+  }
+
   function showStatus(msg) {
-    statusBox.textContent = msg;
-    statusBox.style.display = 'block';
+    const box = activeStatusBox();
+    box.textContent = msg;
+    box.style.display = 'block';
   }
 
   function clearStatus() {
     statusBox.style.display = 'none';
+    previewStatusBox.style.display = 'none';
   }
 
   // Rotates through progressively-reassuring messages while a long request
@@ -386,6 +420,7 @@
 
     const playName = document.getElementById('playName').value.trim();
     const courtType = document.querySelector('input[name="courtType"]:checked').value;
+    const basketOrientation = document.querySelector('input[name="basketOrientation"]:checked').value;
     const level = document.querySelector('input[name="level"]:checked').value;
     const phaseCountRaw = document.getElementById('phaseCount').value.trim();
     const phaseCount = phaseCountRaw ? parseInt(phaseCountRaw, 10) : null;
@@ -393,6 +428,9 @@
 
     const payload = {
       programId, playName, courtType, level,
+      // Orientation only means something for half court -- full court
+      // always shows both baskets, so there's nothing to flip.
+      ...(courtType === 'half' ? { basketOrientation } : {}),
       ...(phaseCount ? { phaseCount } : {}),
       description: correctionNote
         ? `${description}\n\nCORRECTION FROM COACH: ${correctionNote}`
@@ -411,6 +449,7 @@
 
     showStatus('Analyzing your play...');
     analyzeBtn.disabled = true;
+    retryBtn.disabled = true;
     const stopTicker = startProgressTicker(ANALYZE_MESSAGES);
 
     try {
@@ -438,6 +477,7 @@
     } finally {
       stopTicker();
       analyzeBtn.disabled = false;
+      retryBtn.disabled = false;
       clearStatus();
     }
   }
@@ -467,13 +507,13 @@
       `;
       block.appendChild(meta);
 
-      block.appendChild(renderCourtSVG(phase, brief.courtType));
+      block.appendChild(renderCourtSVG(phase, brief.courtType, brief.basketOrientation));
 
       phasesContainer.appendChild(block);
     });
   }
 
-  function renderCourtSVG(phase, courtType) {
+  function renderCourtSVG(phase, courtType, basketOrientation) {
     const viewH = courtType === 'full' ? 500 : 420;
     const svgNS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(svgNS, 'svg');
@@ -492,11 +532,18 @@
     rect.setAttribute('stroke-width', 2);
     svg.appendChild(rect);
 
+    // Basket-at-bottom is the default (down). "Up" mirrors every y-coordinate
+    // of the static court markings around the half-court viewBox's height
+    // (420) -- this only affects the court OUTLINE drawn here; player
+    // positions from the model's brief already come mirrored appropriately
+    // since the same orientation was passed to it when it generated them.
+    const my = (y) => (basketOrientation === 'up' ? 420 - y : y);
+
     if (courtType !== 'full') {
       // Basket
       const basket = document.createElementNS(svgNS, 'circle');
       basket.setAttribute('cx', 260);
-      basket.setAttribute('cy', 375);
+      basket.setAttribute('cy', my(375));
       basket.setAttribute('r', 4);
       basket.setAttribute('fill', 'none');
       basket.setAttribute('stroke', '#27364a');
@@ -506,17 +553,20 @@
       // Backboard
       const backboard = document.createElementNS(svgNS, 'line');
       backboard.setAttribute('x1', 235);
-      backboard.setAttribute('y1', 385);
+      backboard.setAttribute('y1', my(385));
       backboard.setAttribute('x2', 285);
-      backboard.setAttribute('y2', 385);
+      backboard.setAttribute('y2', my(385));
       backboard.setAttribute('stroke', '#27364a');
       backboard.setAttribute('stroke-width', 2);
       svg.appendChild(backboard);
 
-      // Key / paint outline (elbows at x=207/313, y=285, baseline ~397)
+      // Key / paint outline (elbows at x=207/313, y=285, baseline ~397).
+      // The rect's y anchor is its top-left corner, so mirroring needs the
+      // bottom edge (285+112=397) to land at my(397), not my(285), for the
+      // flipped rect to occupy the same visual footprint reflected.
       const key = document.createElementNS(svgNS, 'rect');
       key.setAttribute('x', 207);
-      key.setAttribute('y', 285);
+      key.setAttribute('y', basketOrientation === 'up' ? my(397) : 285);
       key.setAttribute('width', 106);
       key.setAttribute('height', 112);
       key.setAttribute('fill', 'none');
@@ -527,7 +577,7 @@
       // Free-throw circle
       const ftCircle = document.createElementNS(svgNS, 'circle');
       ftCircle.setAttribute('cx', 260);
-      ftCircle.setAttribute('cy', 285);
+      ftCircle.setAttribute('cy', my(285));
       ftCircle.setAttribute('r', 53);
       ftCircle.setAttribute('fill', 'none');
       ftCircle.setAttribute('stroke', '#27364a');
@@ -536,7 +586,7 @@
 
       // Three-point arc (approximate)
       const arc = document.createElementNS(svgNS, 'path');
-      arc.setAttribute('d', 'M 58,355 Q 260,155 462,355');
+      arc.setAttribute('d', `M 58,${my(355)} Q 260,${my(155)} 462,${my(355)}`);
       arc.setAttribute('fill', 'none');
       arc.setAttribute('stroke', '#27364a');
       arc.setAttribute('stroke-width', 1.5);
@@ -658,7 +708,24 @@
         },
         body: JSON.stringify({ programId: programSelect.value, brief: currentBrief }),
       });
-      const data = await res.json();
+
+      // A server-side timeout (Vercel's function time limit) or crash comes
+      // back as a non-JSON error page, not our normal { error } shape --
+      // res.json() throws in that case. Report that specifically instead
+      // of letting it fall through to the generic "network error" message,
+      // since the two have very different causes and fixes.
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        showPreviewError(
+          res.status === 504
+            ? "The build took too long and the server timed out. This can happen with plays that have a lot of phases -- try again, or reduce the phase count."
+            : `Build failed with an unexpected server response (status ${res.status}). Please try again.`
+        );
+        btn.disabled = false;
+        return;
+      }
 
       if (!res.ok) {
         showPreviewError(data.error || 'Build failed. Please try again.');

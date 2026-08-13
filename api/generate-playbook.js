@@ -58,7 +58,10 @@ Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema
 }
 
 ## SVG Diagram Rules
-- Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). Draw a simple court outline: rect border, key/paint rectangle (elbows at x=207/313, y=285, baseline ~397), free-throw circle (cx=260 cy=285 r=53), three-point arc (path from 58,355 through 260,155 to 462,355), basket (small circle near cy=375), backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2.
+- Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). You'll be told this phase's basket position: DOWN (default) or UP. Draw a simple court outline using whichever anchor set matches -- rect border, key/paint rectangle, free-throw circle, three-point arc, basket, backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2:
+  DOWN: key/paint rect x=207 y=285 width=106 height=112 (baseline ~397), free-throw circle cx=260 cy=285 r=53, three-point arc path "M 58,355 Q 260,155 462,355", basket circle cy=375, backboard line y=385.
+  UP: key/paint rect x=207 y=23 width=106 height=112 (baseline ~23, opening toward the top), free-throw circle cx=260 cy=135 r=53, three-point arc path "M 58,65 Q 260,265 462,65", basket circle cy=45, backboard line y=35.
+  Full court always shows both baskets, so basket position doesn't apply there -- use the existing defensive/attacking basket layout regardless.
 - Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
 - Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus an arrow/line connecting start to end (solid line = dribble/primary movement, dashed stroke-dasharray "7,4" = pass, stroke-width 2.5 primary / 2.0 secondary). Arrow tail/tip must touch circle edges, never float in open space. Players who don't move: solid circle only, no ghost, no line.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
@@ -97,68 +100,56 @@ export default async function handler(req, res) {
   }
   const { user, supabase } = authResult;
 
-  let phaseResults;
+  const slug = slugify(brief.playName || "untitled-play");
+
+  // Everything in this handler has to finish inside Vercel's 60s function
+  // limit. The per-phase Claude calls (below) are the slow part and already
+  // run in parallel with each other; the plays-row write doesn't depend on
+  // their output at all, so run it CONCURRENTLY with phase generation
+  // instead of strictly after it -- that fully hides its latency under the
+  // AI calls' own time instead of adding to the total. A single `upsert`
+  // (matching the `unique (program_id, slug)` constraint) replaces the old
+  // select-then-insert-or-update pattern, cutting a full round trip too.
+  // Re-running a build for the same play updates that row in place rather
+  // than creating a duplicate.
+  let phaseResults, playRow;
   try {
-    phaseResults = await Promise.all(
-      brief.phases.map((phase, idx) =>
-        generatePhaseContent(phase, brief, idx === brief.phases.length - 1)
-      )
-    );
+    const [pr, row] = await Promise.all([
+      Promise.all(
+        brief.phases.map((phase, idx) =>
+          generatePhaseContent(phase, brief, idx === brief.phases.length - 1)
+        )
+      ),
+      supabase
+        .from("plays")
+        .upsert(
+          {
+            program_id: programId,
+            slug,
+            title: brief.playName || "Untitled Play",
+            play_type: null,
+            phase_count: brief.phases.length,
+            court_type: brief.courtType || "half",
+            status: "published",
+            created_by: user.id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "program_id,slug" }
+        )
+        .select()
+        .single()
+        .then(({ data, error }) => {
+          if (error) throw error;
+          return data;
+        }),
+    ]);
+    phaseResults = pr;
+    playRow = row;
   } catch (err) {
-    return sendJson(res, { error: `Phase generation failed: ${err.message}` }, 502);
+    return sendJson(res, { error: `Play generation failed: ${err.message}` }, 502);
   }
 
   const html = buildShellHtml(brief, phaseResults);
-  const slug = slugify(brief.playName || "untitled-play");
-
-  // Write the plays row FIRST so we have a UUID to key the Blob path on --
-  // the old scheme keyed Blob paths by human-readable program+slug, which
-  // is deterministic and guessable. If a play with this slug already
-  // exists in this program, update it in place instead of erroring (a
-  // coach re-running a build should overwrite, not duplicate).
-  let playRow;
-  try {
-    const { data: existing } = await supabase
-      .from("plays")
-      .select("id")
-      .eq("program_id", programId)
-      .eq("slug", slug)
-      .maybeSingle();
-
-    const playFields = {
-      program_id: programId,
-      slug,
-      title: brief.playName || "Untitled Play",
-      play_type: null,
-      phase_count: brief.phases.length,
-      court_type: brief.courtType || "half",
-      status: "published",
-      created_by: user.id,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from("plays")
-        .update(playFields)
-        .eq("id", existing.id)
-        .select()
-        .single();
-      if (error) throw error;
-      playRow = data;
-    } else {
-      const { data, error } = await supabase
-        .from("plays")
-        .insert(playFields)
-        .select()
-        .single();
-      if (error) throw error;
-      playRow = data;
-    }
-  } catch (err) {
-    return sendJson(res, { error: `Failed to save play record: ${err.message}` }, 502);
-  }
-
   const blobPath = `generated/${playRow.id}.html`;
 
   let blobResult;
@@ -193,6 +184,7 @@ async function generatePhaseContent(phase, brief, isFinalPhase) {
 
 Play: ${brief.playName || "(untitled)"}
 Court type: ${brief.courtType || "half"}
+${brief.courtType === "half" ? `Basket position: ${brief.basketOrientation === "up" ? "up (basket near the top)" : "down (basket near the bottom, the default)"}` : ""}
 Coaching level: ${brief.level || "high-school"}
 This is ${isFinalPhase ? "the FINAL phase (omit the bbridge)" : "NOT the final phase (include a bbridge to the next phase)"}.
 
