@@ -8,14 +8,13 @@
  * renders so the coach can confirm player locations before the
  * expensive full build step runs.
  *
- * Auth: requires a valid, active token from tokens.json whose role
- * is "coach", and the token must belong to the program being built
- * for. Same enforcement pattern as check-token.js.
+ * Auth: requires a Supabase coach session (Authorization: Bearer
+ * <access_token> header) that owns the programId being built for.
+ * See api/_lib/validate-session.js.
  *
  * Body (JSON):
  *   {
- *     token: string,
- *     program: string,
+ *     programId: string,
  *     playName: string,
  *     courtType: "half" | "full",
  *     level: string,           // youth | high-school | prep | college | pro
@@ -30,7 +29,7 @@
  *   or { error: string } with an appropriate status code
  */
 
-import { validateCoachToken } from "./_lib/validate-token.js";
+import { validateCoachSession } from "./_lib/validate-session.js";
 
 // Runs on Vercel's default Node.js runtime — Edge Functions have a hard
 // ~25s cap that can't be extended, and open-ended play descriptions can
@@ -96,8 +95,7 @@ export default async function handler(req, res) {
   }
 
   const {
-    token,
-    program,
+    programId,
     playName,
     courtType,
     level,
@@ -107,12 +105,18 @@ export default async function handler(req, res) {
     imageMediaType,
   } = body;
 
-  if (!token || !program || !description) {
+  if (!programId || !description) {
     return sendJson(res, { error: "Missing required fields" }, 400);
   }
 
-  // ---- Auth: validate token against tokens.json, require role=coach ----
-  const authResult = await validateCoachToken(token, program);
+  // Server-side cap matching the UI's own max -- the client already limits
+  // this to 8, but the API shouldn't just trust that.
+  if (phaseCount !== undefined && phaseCount !== null && (phaseCount < 1 || phaseCount > 8)) {
+    return sendJson(res, { error: "phaseCount must be between 1 and 8" }, 400);
+  }
+
+  // ---- Auth: require a logged-in coach who owns this program ----
+  const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
     return sendJson(res, { error: authResult.error }, authResult.status);
   }

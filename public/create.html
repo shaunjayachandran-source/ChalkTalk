@@ -203,12 +203,15 @@
 
 <div class="page-container">
 
-<a class="home-link" href="index.html">&larr; Return to Homepage</a>
+<a class="home-link" href="dashboard.html">&larr; Back to Dashboard</a>
 
 <h1>BUILD A PLAY</h1>
 <div class="subtitle">Describe the play, upload a diagram if you've got one, and we'll draft it for your review.</div>
 
 <div class="card" id="builder-form">
+  <label for="programSelect">Program</label>
+  <select id="programSelect"></select>
+
   <label for="playName">Play Name</label>
   <input type="text" id="playName" placeholder="e.g. Melo 15 Elbow">
 
@@ -261,12 +264,11 @@
 
 </div>
 
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token') || '';
-  const program = params.get('program') || '';
+<script type="module">
+  import { supabase, requireSession } from "/js/supabase-client.js";
 
   let currentBrief = null;
+  let currentSession = null;
 
   const errorBox = document.getElementById('error-box');
   const statusBox = document.getElementById('status-box');
@@ -275,6 +277,35 @@
   const previewSection = document.getElementById('preview-section');
   const phasesContainer = document.getElementById('phases-container');
   const previewErrorBox = document.getElementById('preview-error-box');
+  const programSelect = document.getElementById('programSelect');
+
+  async function loadPrograms() {
+    const { data, error } = await supabase.from('programs').select('id, slug, name').order('name');
+    if (error) {
+      showError("Couldn't load your programs: " + error.message);
+      analyzeBtn.disabled = true;
+      return;
+    }
+    if (!data || data.length === 0) {
+      showError('No programs found on your account yet -- add one from the dashboard first.');
+      analyzeBtn.disabled = true;
+      return;
+    }
+    programSelect.innerHTML = data.map(p => `<option value="${p.id}">${p.name} (${p.slug})</option>`).join('');
+
+    // If we arrived here from the dashboard's "Build a play" link, it
+    // passes ?program=<id> -- preselect it if it's one of this coach's.
+    const preselect = new URLSearchParams(window.location.search).get('program');
+    if (preselect && data.some(p => p.id === preselect)) {
+      programSelect.value = preselect;
+    }
+  }
+
+  (async () => {
+    currentSession = await requireSession();
+    if (!currentSession) return;
+    await loadPrograms();
+  })();
 
   function showError(msg) {
     errorBox.textContent = msg;
@@ -336,8 +367,14 @@
     clearError();
     previewErrorBox.style.display = 'none';
 
-    if (!token || !program) {
-      showError('Missing access token or program. Please use the link provided by your coach admin.');
+    if (!currentSession) {
+      showError('You need to be logged in to build a play.');
+      return;
+    }
+
+    const programId = programSelect.value;
+    if (!programId) {
+      showError('Select a program before analyzing.');
       return;
     }
 
@@ -355,7 +392,7 @@
     const imageFile = document.getElementById('diagramImage').files[0];
 
     const payload = {
-      token, program, playName, courtType, level,
+      programId, playName, courtType, level,
       ...(phaseCount ? { phaseCount } : {}),
       description: correctionNote
         ? `${description}\n\nCORRECTION FROM COACH: ${correctionNote}`
@@ -379,7 +416,10 @@
     try {
       const res = await fetch('/api/generate-brief', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + currentSession.access_token,
+        },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -612,8 +652,11 @@
     try {
       const res = await fetch('/api/generate-playbook', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, program, brief: currentBrief }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + currentSession.access_token,
+        },
+        body: JSON.stringify({ programId: programSelect.value, brief: currentBrief }),
       });
       const data = await res.json();
 
