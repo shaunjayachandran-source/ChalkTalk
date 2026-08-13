@@ -215,6 +215,16 @@
   <label for="playName">Play Name</label>
   <input type="text" id="playName" placeholder="e.g. Melo 15 Elbow">
 
+  <label for="category">Category</label>
+  <select id="category">
+    <option value="offense">Offense</option>
+    <option value="defense">Defense</option>
+    <option value="slob">SLOB (Sideline Inbounds)</option>
+    <option value="blob">BLOB (Baseline Inbounds)</option>
+    <option value="special">Special Situations</option>
+  </select>
+  <div style="color: var(--gray); font-size: 12px; margin-top: 6px;">Just for organizing your team's public directory page -- doesn't change how the play itself is built.</div>
+
   <label>Court Type</label>
   <div class="radio-row">
     <label><input type="radio" name="courtType" value="half" checked> Half Court</label>
@@ -706,7 +716,11 @@
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + currentSession.access_token,
         },
-        body: JSON.stringify({ programId: programSelect.value, brief: currentBrief }),
+        body: JSON.stringify({
+          programId: programSelect.value,
+          brief: currentBrief,
+          category: document.getElementById('category').value,
+        }),
       });
 
       // A server-side timeout (Vercel's function time limit) or crash comes

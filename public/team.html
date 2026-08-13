@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — Team Page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1017;
+    --card: #161c27;
+    --line: #232b38;
+    --gold: #f0b429;
+    --gold-soft: #f7cf6a;
+    --teal: #1abc9c;
+    --text: #eef1f6;
+    --dim: #8b93a3;
+    --dim2: #5c6472;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+
+  /* ---------- HERO ---------- */
+  .hero {
+    position: relative;
+    min-height: 42vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 12px;
+    padding: 48px 24px 40px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(ellipse 60% 60% at 50% 20%, rgba(240,180,41,.10), transparent 70%);
+  }
+  .crest {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #21283a, #10141d);
+    border: 2px solid var(--gold);
+    box-shadow: 0 0 0 5px rgba(240,180,41,.08), 0 10px 30px rgba(0,0,0,.5);
+  }
+  .crest span {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.7rem;
+    letter-spacing: .02em;
+    color: var(--gold-soft);
+  }
+  .team-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.2rem, 7vw, 4rem);
+    line-height: .95;
+    letter-spacing: .02em;
+    background: linear-gradient(180deg, #fff, var(--gold-soft) 70%, var(--gold));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .team-sub {
+    font-family: 'DM Mono', monospace;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    font-size: .72rem;
+    color: var(--dim);
+  }
+  .hero-line {
+    margin-top: 4px;
+    max-width: 540px;
+    color: var(--dim);
+    font-size: .88rem;
+    line-height: 1.5;
+  }
+
+  /* ---------- NOTE ---------- */
+  .notes {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 24px 0;
+  }
+  .notes .box {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--teal);
+    background: var(--card);
+    border-radius: 6px;
+    padding: 16px 18px;
+    font-size: .84rem;
+    line-height: 1.6;
+    color: var(--dim);
+  }
+  .notes .box b { color: var(--text); }
+
+  /* ---------- SECTION NAV ---------- */
+  .section-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    padding: 14px 16px;
+    margin-top: 24px;
+    background: rgba(13,16,23,.9);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .section-nav a {
+    font-family: 'DM Mono', monospace;
+    font-size: .7rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--dim);
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+  }
+  .section-nav a:hover { color: var(--text); }
+
+  /* ---------- SECTIONS ---------- */
+  .section {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 34px 24px 10px;
+    scroll-margin-top: 70px;
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 14px;
+  }
+  .section-head h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem;
+    letter-spacing: .03em;
+  }
+  .section-head p {
+    font-family: 'DM Mono', monospace;
+    font-size: .7rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--dim2);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px;
+  }
+  .card.play {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--gold);
+    background: var(--card);
+    border-radius: 8px;
+    padding: 18px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .card.play:hover { border-color: var(--gold); transform: translateY(-2px); }
+  .card.play .pt-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: .02em;
+  }
+  .card.play .pt-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: .64rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--dim2);
+  }
+  .card.ghost {
+    border: 1px dashed #2c3646;
+    background: transparent;
+    border-radius: 6px;
+    padding: 18px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--dim2);
+    font-size: .8rem;
+    line-height: 1.5;
+  }
+
+  footer {
+    margin-top: 50px;
+    padding: 32px 24px 50px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+  footer .mark { font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem; letter-spacing: .08em; color: var(--dim); }
+  footer .mark b { color: var(--gold); }
+  footer .tagline { font-family: 'DM Mono', monospace; font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; color: var(--dim2); }
+
+  /* ---------- Access modal ---------- */
+  #access-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0,0,0,.6);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #access-modal .box {
+    background: var(--card);
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    padding: 24px;
+    max-width: 380px;
+    text-align: center;
+  }
+  #access-modal h3 { font-family: 'Bebas Neue', sans-serif; color: var(--gold); font-size: 1.4rem; margin-bottom: 10px; letter-spacing: .02em; }
+  #access-modal p { color: var(--dim); font-size: .86rem; line-height: 1.5; margin-bottom: 16px; }
+  #access-modal button {
+    background: var(--gold);
+    color: #0d1017;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-family: 'DM Mono', monospace;
+    font-size: .8rem;
+    cursor: pointer;
+  }
+
+  #loading, #not-found { text-align: center; padding: 80px 20px; color: var(--dim); }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading team page...</div>
+<div id="not-found" style="display:none;">No program found for this link.</div>
+
+<div id="page" style="display:none;">
+  <div class="hero">
+    <div class="crest"><span id="crest-initials"></span></div>
+    <div class="team-name" id="team-name"></div>
+    <div class="team-sub" id="team-sub"></div>
+    <div class="hero-line">Playbook directory — built for coaches, players, and parents to see the same system explained at the depth each of them needs.</div>
+  </div>
+
+  <div class="notes">
+    <div class="box" id="status-note"></div>
+  </div>
+
+  <div class="section-nav" id="section-nav"></div>
+  <div id="sections"></div>
+
+  <footer>
+    <div class="mark"><b>CHALK</b>TALK</div>
+    <div class="tagline" id="footer-tagline"></div>
+  </footer>
+</div>
+
+<div id="access-modal">
+  <div class="box">
+    <h3>This play is private</h3>
+    <p>Full diagrams and coaching notes for this play are shared only with people who have a personal access link from their coach. Ask your coach for your player, parent, or coach link to view it.</p>
+    <button id="access-modal-close">Got it</button>
+  </div>
+</div>
+
+<script type="module">
+  import { supabase } from "/js/supabase-client.js";
+
+  const CATEGORIES = [
+    { key: "offense", label: "Offense", desc: "Man, zone, and press-break sets." },
+    { key: "defense", label: "Defense", desc: "Man, zone, and press coverages." },
+    { key: "slob", label: "SLOB", desc: "Sideline inbounds calls." },
+    { key: "blob", label: "BLOB", desc: "Baseline inbounds calls." },
+    { key: "special", label: "Specials", desc: "ATO, need-a-3, protect-the-lead." },
+  ];
+
+  const INITIALS_OVERRIDES = {
+    "melo-16u": "MELO",
+    "dematha": "DM",
+    "lsu": "LSU",
+    "dartmouth": "DART",
+  };
+
+  function initialsFor(program) {
+    const key = (program.slug || "").toLowerCase();
+    if (INITIALS_OVERRIDES[key]) return INITIALS_OVERRIDES[key];
+    const words = (program.name || program.slug || "?").split(/\s+/).filter(Boolean);
+    const letters = words.map((w) => w[0]).join("").toUpperCase();
+    return letters.slice(0, 5) || "?";
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str || "";
+    return div.innerHTML;
+  }
+
+  function playCard(play) {
+    const div = document.createElement("div");
+    div.className = "card play";
+    div.innerHTML = `
+      <div class="pt-title">${escapeHtml(play.title)}</div>
+      <div class="pt-meta">${play.phase_count || "?"} phase${play.phase_count === 1 ? "" : "s"} &middot; ${escapeHtml(play.court_type || "half")} court</div>
+    `;
+    div.addEventListener("click", () => {
+      document.getElementById("access-modal").style.display = "flex";
+    });
+    return div;
+  }
+
+  function ghostCard(label) {
+    const div = document.createElement("div");
+    div.className = "card ghost";
+    div.textContent = label;
+    return div;
+  }
+
+  async function init() {
+    const slug = new URLSearchParams(window.location.search).get("slug");
+    if (!slug) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("not-found").style.display = "block";
+      return;
+    }
+
+    const { data: program, error: programErr } = await supabase
+      .from("team_directory")
+      .select("id, slug, name, level")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (programErr || !program) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("not-found").style.display = "block";
+      return;
+    }
+
+    const { data: plays } = await supabase
+      .from("play_directory")
+      .select("title, play_type, phase_count, court_type, updated_at")
+      .eq("program_id", program.id);
+
+    document.title = `${program.name} — ChalkTalk`;
+    document.getElementById("crest-initials").textContent = initialsFor(program);
+    document.getElementById("team-name").textContent = program.name.toUpperCase();
+    document.getElementById("team-sub").textContent = [program.level, "ChalkTalk Playbook"]
+      .filter(Boolean)
+      .join(" · ")
+      .toUpperCase();
+    document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+
+    const totalPlays = (plays || []).length;
+    document.getElementById("status-note").innerHTML = totalPlays
+      ? `<b>${totalPlays} play${totalPlays === 1 ? "" : "s"}</b> built so far. This directory shows titles only &mdash; full diagrams and coaching notes are shared privately with each team member's own access link.`
+      : `No plays have been built yet for this program. Check back once the coaching staff runs a play through ChalkTalk's Intake Mode.`;
+
+    const nav = document.getElementById("section-nav");
+    const sectionsEl = document.getElementById("sections");
+
+    CATEGORIES.forEach((cat) => {
+      nav.innerHTML += `<a href="#sec-${cat.key}">${cat.label}</a>`;
+
+      const catPlays = (plays || []).filter((p) => p.play_type === cat.key);
+      const section = document.createElement("div");
+      section.className = "section";
+      section.id = `sec-${cat.key}`;
+      section.innerHTML = `
+        <div class="section-head">
+          <h2>${cat.label}</h2>
+          <p>${cat.desc}</p>
+        </div>
+      `;
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      if (catPlays.length) {
+        catPlays.forEach((p) => grid.appendChild(playCard(p)));
+      } else {
+        grid.appendChild(ghostCard(`No ${cat.label.toLowerCase()} plays yet.`));
+      }
+      section.appendChild(grid);
+      sectionsEl.appendChild(section);
+    });
+
+    // Anything built before category tracking existed (or with an
+    // unrecognized play_type) still deserves to show up somewhere, rather
+    // than silently vanishing from the directory.
+    const uncategorized = (plays || []).filter((p) => !CATEGORIES.some((c) => c.key === p.play_type));
+    if (uncategorized.length) {
+      nav.innerHTML += `<a href="#sec-other">Other</a>`;
+      const section = document.createElement("div");
+      section.className = "section";
+      section.id = "sec-other";
+      section.innerHTML = `
+        <div class="section-head">
+          <h2>Other</h2>
+          <p>Built before categories, or uncategorized.</p>
+        </div>
+      `;
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      uncategorized.forEach((p) => grid.appendChild(playCard(p)));
+      section.appendChild(grid);
+      sectionsEl.appendChild(section);
+    }
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("page").style.display = "block";
+  }
+
+  document.getElementById("access-modal-close").addEventListener("click", () => {
+    document.getElementById("access-modal").style.display = "none";
+  });
+
+  init();
+</script>
+</body>
+</html>
