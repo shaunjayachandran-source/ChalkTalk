@@ -142,7 +142,10 @@
 
     <div class="card">
       <h2>Plays</h2>
-      <div class="sub">Plays generated for this program. Building new ones still happens on the existing Create page for now.</div>
+      <div class="sub" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <span>Plays generated for this program.</span>
+        <a id="build-play-link" href="create.html" class="action" style="background:var(--gold); color:#0d1017; text-decoration:none; padding:6px 12px; border-radius:6px; font-size:12px; white-space:nowrap;">Build a play &rarr;</a>
+      </div>
       <table id="plays-table">
         <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th></tr></thead>
         <tbody></tbody>
@@ -204,13 +207,20 @@
     document.getElementById("content").style.display = "block";
     if (programs.length) {
       currentProgramId = programs[0].id;
+      updateBuildPlayLink(currentProgramId);
       await loadProgramDetail(currentProgramId);
     }
     select.addEventListener("change", async (e) => {
       currentProgramId = e.target.value;
+      updateBuildPlayLink(currentProgramId);
       document.getElementById("token-reveal").style.display = "none";
       await loadProgramDetail(currentProgramId);
     });
+  }
+
+  function updateBuildPlayLink(programId) {
+    const link = document.getElementById("build-play-link");
+    if (link) link.href = `create.html?program=${encodeURIComponent(programId)}`;
   }
 
   async function loadProgramDetail(programId) {

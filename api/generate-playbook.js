@@ -15,11 +15,18 @@
  * how many phases a play has, since they run concurrently rather than
  * accumulating sequentially against the 60s cap.
  *
- * Auth: requires a valid, active, coach-role token whose program matches
- * where the file gets written. Re-validated independently from the brief step.
+ * Auth: requires a Supabase coach session (Authorization: Bearer
+ * <access_token> header) that owns programId. Re-validated independently
+ * from the brief step, same as before.
+ *
+ * Storage: writes a `plays` row first (so the play shows up on the coach's
+ * dashboard immediately), then uploads the rendered HTML to Vercel Blob at
+ * a path keyed by that row's UUID (generated/<play-id>.html) rather than by
+ * human-readable program+slug -- removes the old, guessable
+ * generated/<program>/<slug>.html path.
  *
  * Body (JSON):
- *   { token: string, program: string, brief: { ...see generate-brief.js schema } }
+ *   { programId: string, brief: { ...see generate-brief.js schema } }
  *
  * Response (JSON):
  *   { url: string }   -- public Blob URL of the generated playbook
@@ -27,7 +34,7 @@
  */
 
 import { put } from "@vercel/blob";
-import { validateCoachToken } from "./_lib/validate-token.js";
+import { validateCoachSession } from "./_lib/validate-session.js";
 
 export const config = { maxDuration: 60 };
 
@@ -78,16 +85,17 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { token, program, brief } = body;
+  const { programId, brief } = body;
 
-  if (!token || !program || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
+  if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
     return sendJson(res, { error: "Missing or invalid brief" }, 400);
   }
 
-  const authResult = await validateCoachToken(token, program);
+  const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
     return sendJson(res, { error: authResult.error }, authResult.status);
   }
+  const { user, supabase } = authResult;
 
   let phaseResults;
   try {
@@ -101,9 +109,57 @@ export default async function handler(req, res) {
   }
 
   const html = buildShellHtml(brief, phaseResults);
-
   const slug = slugify(brief.playName || "untitled-play");
-  const blobPath = `generated/${program}/${slug}.html`;
+
+  // Write the plays row FIRST so we have a UUID to key the Blob path on --
+  // the old scheme keyed Blob paths by human-readable program+slug, which
+  // is deterministic and guessable. If a play with this slug already
+  // exists in this program, update it in place instead of erroring (a
+  // coach re-running a build should overwrite, not duplicate).
+  let playRow;
+  try {
+    const { data: existing } = await supabase
+      .from("plays")
+      .select("id")
+      .eq("program_id", programId)
+      .eq("slug", slug)
+      .maybeSingle();
+
+    const playFields = {
+      program_id: programId,
+      slug,
+      title: brief.playName || "Untitled Play",
+      play_type: null,
+      phase_count: brief.phases.length,
+      court_type: brief.courtType || "half",
+      status: "published",
+      created_by: user.id,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from("plays")
+        .update(playFields)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      playRow = data;
+    } else {
+      const { data, error } = await supabase
+        .from("plays")
+        .insert(playFields)
+        .select()
+        .single();
+      if (error) throw error;
+      playRow = data;
+    }
+  } catch (err) {
+    return sendJson(res, { error: `Failed to save play record: ${err.message}` }, 502);
+  }
+
+  const blobPath = `generated/${playRow.id}.html`;
 
   let blobResult;
   try {
@@ -116,6 +172,17 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     return sendJson(res, { error: `Failed to save playbook: ${err.message}` }, 502);
+  }
+
+  const { error: updateErr } = await supabase
+    .from("plays")
+    .update({ storage_url: blobResult.url })
+    .eq("id", playRow.id);
+  if (updateErr) {
+    // The play and the file both exist at this point -- just the DB
+    // record's storage_url link didn't save. Don't fail the whole
+    // request over it; the coach still gets a working URL back.
+    console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
   }
 
   return sendJson(res, { url: blobResult.url });
