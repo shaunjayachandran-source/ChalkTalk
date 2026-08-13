@@ -91,7 +91,9 @@ Infer reasonable court positions even if the coach's description is imprecise â€
 
 IMPORTANT: Every phase must include ALL FIVE offensive players (numbers 1-5), even if the coach only described the action for one or two of them. For players not mentioned in the coach's description, place them in sensible, realistic supporting positions for that phase (e.g. spacing the floor at the opposite wing, corner, or top, or holding a natural help/safety position) with startX/Y equal to endX/Y (they don't move) and an action like "Holds floor spacing on the [location]" or "Maintains position as a safety valve." Never omit a player just because the coach didn't mention them â€” a real possession always has 5 players on the court.
 
-If the coach mentions a specific number of phases, honor it; otherwise infer a sensible phase count from the description.`;
+If the coach mentions a specific number of phases, honor it (up to 8 -- see cap below); otherwise infer a sensible phase count from the description.
+
+HARD CAP: never generate more than 8 phases total, no matter how long or continuous the described action is (e.g. a full motion-offense cycle back to starting spots). If the play logically needs more to fully resolve, consolidate the least essential intermediate movements so the whole thing still fits in 8 phases or fewer -- a coach can always describe a follow-up play separately. This cap exists because the response has a fixed size budget; going over it produces a cut-off, invalid response instead of a complete one.`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -176,7 +178,12 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4000,
+        // Raised from 4000: a full-cycle play description (e.g. "until
+        // players are back to their original spots") can produce enough
+        // phases/players/text to get cut off mid-JSON at the old limit,
+        // which fails to parse. This is a safety margin on top of the
+        // 8-phase hard cap in the system prompt, not a substitute for it.
+        max_tokens: 6000,
         system: BRIEF_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
@@ -208,9 +215,18 @@ export default async function handler(req, res) {
       .replace(/```\s*$/i, "");
     brief = JSON.parse(cleaned);
   } catch (err) {
+    // If the model ran out of room mid-response (stop_reason "max_tokens"),
+    // say so specifically -- that's a distinct, actionable problem ("ask
+    // for fewer phases") rather than a generic parsing failure.
+    const truncated = data.stop_reason === "max_tokens";
     return sendJson(
       res,
-      { error: "Model did not return valid JSON", raw: textBlock.text },
+      {
+        error: truncated
+          ? "The response was too long and got cut off before finishing. Try a shorter description, specify a lower phase count, or split this into two separate plays."
+          : "Model did not return valid JSON",
+        raw: textBlock.text,
+      },
       502
     );
   }
