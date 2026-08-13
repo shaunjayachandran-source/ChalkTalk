@@ -41,15 +41,25 @@ const MODEL = "claude-sonnet-4-6";
 
 const BRIEF_SYSTEM_PROMPT = `You are a basketball play analyst. A coach will describe a play in plain language, sometimes with a hand-drawn diagram image. Your ONLY job right now is to extract a STRUCTURED BRIEF of what happens — you are NOT generating any HTML, CSS, or SVG code.
 
-Court coordinate system (half-court, viewBox 0 0 520 420 — use these ranges when placing players):
-- Basket is at approximately x=260, y=370 (bottom of court)
+Court coordinate system (half-court, viewBox 0 0 520 420 — use these ranges when placing players). The coach also specifies a basket position, either DOWN (basket near the bottom, the default) or UP (basket near the top, vertically mirrored) -- use whichever anchor set matches what you were told for this request:
+
+DOWN (basket at bottom):
+- Basket is at approximately x=260, y=370
 - Elbows: left x=207 y=285, right x=313 y=285
 - Top of key / slots: y≈205
 - Deep corners: left x=58 y=355, right x=462 y=355
 - Center top (above the arc): x=260 y=185
-- Court spans roughly x=15 to x=504, y=110 to y=397
 
-For full-court plays (viewBox 0 0 520 500), defensive basket is near y=28, half-court line is y=252, attacking basket is near y=472. Scale positions proportionally.
+UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
+- Basket is at approximately x=260, y=50
+- Elbows: left x=207 y=135, right x=313 y=135
+- Top of key / slots: y≈215
+- Deep corners: left x=58 y=65, right x=462 y=65
+- Center top (below the arc, toward mid-court): x=260 y=235
+
+Court spans roughly x=15 to x=504, y=110 to y=397 either way.
+
+For full-court plays (viewBox 0 0 520 500), basket position doesn't apply (both baskets are always shown) -- defensive basket is near y=28, half-court line is y=252, attacking basket is near y=472. Scale positions proportionally.
 
 Return ONLY valid JSON, no markdown fences, no preamble, no explanation. Match this exact schema:
 
@@ -98,12 +108,17 @@ export default async function handler(req, res) {
     programId,
     playName,
     courtType,
+    basketOrientation,
     level,
     phaseCount,
     description,
     imageBase64,
     imageMediaType,
   } = body;
+
+  // Basket orientation only applies to half court; default to "down" (the
+  // original behavior) whenever it's missing or the court is full.
+  const resolvedOrientation = courtType === "half" && basketOrientation === "up" ? "up" : "down";
 
   if (!programId || !description) {
     return sendJson(res, { error: "Missing required fields" }, 400);
@@ -138,6 +153,7 @@ export default async function handler(req, res) {
   const textPrompt = [
     `Play name: ${playName || "(untitled)"}`,
     `Court type: ${courtType || "half"}`,
+    courtType === "half" ? `Basket position: ${resolvedOrientation} (${resolvedOrientation === "up" ? "basket near the top" : "basket near the bottom, the default"})` : null,
     `Coaching level: ${level || "high-school"}`,
     phaseCount ? `Target phase count: ${phaseCount}` : null,
     `Description from coach:`,
@@ -200,6 +216,11 @@ export default async function handler(req, res) {
   }
 
   brief.phases = (brief.phases || []).map(fillMissingPlayers);
+
+  // Stamp this ourselves rather than trusting the model to echo it back --
+  // we already know what was requested, no need to rely on the model
+  // faithfully including it in its JSON output.
+  brief.basketOrientation = courtType === "half" ? resolvedOrientation : undefined;
 
   return sendJson(res, { brief });
 }
