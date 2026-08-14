@@ -79,9 +79,12 @@
     border-radius: 100px;
     font-size: 11px;
   }
-  .pill.player { background: rgba(39,174,96,.18); color: var(--green); }
-  .pill.parent { background: rgba(240,180,41,.18); color: var(--gold); }
-  .pill.coach { background: rgba(123,179,255,.18); color: #7db3ff; }
+  .pill.head_coach { background: rgba(123,179,255,.18); color: #7db3ff; }
+  .pill.assistant_coach { background: rgba(154,140,255,.18); color: #b8a9ff; }
+  .pill.graduate_assistant { background: rgba(26,188,156,.18); color: #1abc9c; }
+  .pill.dbo { background: rgba(240,180,41,.18); color: var(--gold); }
+  .pill.athlete { background: rgba(39,174,96,.18); color: var(--green); }
+  .pill.parent { background: rgba(255,180,120,.18); color: #ffb478; }
   .pill.revoked { background: rgba(255,123,110,.18); color: var(--red); }
   .pill.active { background: rgba(39,174,96,.18); color: var(--green); }
   button.action {
@@ -225,22 +228,18 @@
 
       <div class="add-form">
         <input type="text" id="new-member-name" placeholder="Name" />
-        <select id="new-member-role">
-          <option value="player">Player</option>
-          <option value="parent">Parent</option>
-          <option value="coach">Coach</option>
-        </select>
+        <select id="new-member-role"></select>
         <input type="text" id="new-member-phone" placeholder="Phone (optional)" />
         <input type="text" id="new-member-email" placeholder="Email (optional)" />
         <button class="action" id="add-member-btn">Add team member + generate link</button>
       </div>
 
       <div class="team-toolbar">
-        <button class="action secondary" id="download-csv-btn">&darr; Download roster CSV</button>
-        <button class="action secondary" id="upload-csv-btn">&uarr; Upload roster CSV</button>
-        <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none;" />
+        <button class="action secondary" id="download-xlsx-btn">&darr; Download roster template (.xlsx)</button>
+        <button class="action secondary" id="upload-xlsx-btn">&uarr; Upload roster (.xlsx)</button>
+        <input type="file" id="xlsx-file-input" accept=".xlsx" style="display:none;" />
       </div>
-      <div class="sub" style="margin-top:8px; margin-bottom:0;">CSV columns: <code>name, role, phone, email</code> (role must be player/parent/coach; phone and email are optional). Uploading adds each row as a new team member and generates a link for them, same as the one-at-a-time form above.</div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">The downloaded template includes your current roster plus blank rows with a real dropdown on the Role column (Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, Parent) -- no typos possible. Fill it in in Excel/Google Sheets/Numbers and upload it back; each new row generates a team member + access link, same as the one-at-a-time form above.</div>
       <div id="csv-summary"></div>
 
       <div id="token-reveal"></div>
@@ -248,8 +247,47 @@
   </div>
 </main>
 
+<!-- Self-hosted (not CDN) so roster import/export doesn't depend on a
+     third-party host being reachable -- ExcelJS is what actually writes
+     the real dropdown (data validation) into the .xlsx template below. -->
+<script src="/js/vendor/exceljs.min.js"></script>
 <script type="module">
   import { supabase, requireSession } from "/js/supabase-client.js";
+
+  // The full role taxonomy for team members. Stored in the database as the
+  // slug (left); shown to humans -- in the UI, the CSS pill classes, and the
+  // Excel roster template's dropdown -- as the label (right). Head Coach,
+  // Assistant Coach, Graduate Assistant, and DBO are the roles who can
+  // eventually build plays themselves (once per-person logins ship as a
+  // separate feature) -- for now this list is purely organizational, same
+  // as Athlete/Parent.
+  const ROLES = [
+    { slug: "head_coach", label: "Head Coach" },
+    { slug: "assistant_coach", label: "Assistant Coach" },
+    { slug: "graduate_assistant", label: "Graduate Assistant" },
+    { slug: "dbo", label: "DBO" },
+    { slug: "athlete", label: "Athlete" },
+    { slug: "parent", label: "Parent" },
+  ];
+  const ROLE_LABELS = Object.fromEntries(ROLES.map((r) => [r.slug, r.label]));
+  const ROLE_LABEL_TO_SLUG = Object.fromEntries(ROLES.map((r) => [r.label.toLowerCase(), r.slug]));
+
+  function roleLabel(slug) {
+    return ROLE_LABELS[slug] || slug;
+  }
+
+  // Accepts either the exact slug ("head_coach") or the human label
+  // ("Head Coach") -- the Excel upload round-trips display labels, but the
+  // one-at-a-time form and any hand-edited CSV-era data might use slugs.
+  function roleSlugFrom(value) {
+    const v = (value || "").trim();
+    if (ROLE_LABELS[v]) return v;
+    return ROLE_LABEL_TO_SLUG[v.toLowerCase()] || null;
+  }
+
+  document.getElementById("new-member-role").innerHTML = ROLES.map(
+    (r) => `<option value="${r.slug}">${r.label}</option>`
+  ).join("");
 
   let programs = [];
   let currentProgramId = null;
@@ -393,7 +431,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${member.name}</td>
-        <td><span class="pill ${member.role}">${member.role}</span></td>
+        <td><span class="pill ${member.role}">${roleLabel(member.role)}</span></td>
         <td>${member.phone || "&mdash;"}</td>
         <td>${member.email || "&mdash;"}</td>
         <td>${status}</td>
@@ -503,51 +541,16 @@
     await loadMembers(currentProgramId);
   });
 
-  // ---- CSV roster download/upload ----
+  // ---- Excel (.xlsx) roster download/upload ----
+  // Plain CSV can't hold a real dropdown -- that's an Excel/Sheets/Numbers
+  // data-validation feature, not something the CSV file format supports at
+  // all. Using ExcelJS (self-hosted, see the <script> tag above) lets the
+  // downloaded template lock the Role column to the exact 6 allowed values,
+  // so there's no way to type in something ambiguous in the first place.
+  const ROLE_LIST_FORMULA = `"${ROLES.map((r) => r.label).join(",")}"`;
+  const BLANK_ROWS_IN_TEMPLATE = 40;
 
-  function membersToCsvRows(members) {
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const header = ["name", "role", "phone", "email"];
-    const rows = members.map((m) => [m.name, m.role, m.phone || "", m.email || ""]);
-    return [header, ...rows].map((r) => r.map(esc).join(",")).join("\r\n");
-  }
-
-  // Minimal CSV parser -- handles quoted fields (with embedded commas/
-  // newlines/escaped quotes) since names or emails could contain commas.
-  function parseCsv(text) {
-    const rows = [];
-    let row = [];
-    let field = "";
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (inQuotes) {
-        if (c === '"') {
-          if (text[i + 1] === '"') { field += '"'; i++; }
-          else inQuotes = false;
-        } else {
-          field += c;
-        }
-      } else if (c === '"') {
-        inQuotes = true;
-      } else if (c === ",") {
-        row.push(field);
-        field = "";
-      } else if (c === "\n" || c === "\r") {
-        if (c === "\r" && text[i + 1] === "\n") i++;
-        row.push(field);
-        field = "";
-        if (row.length > 1 || row[0] !== "") rows.push(row);
-        row = [];
-      } else {
-        field += c;
-      }
-    }
-    if (field !== "" || row.length) { row.push(field); rows.push(row); }
-    return rows;
-  }
-
-  document.getElementById("download-csv-btn").addEventListener("click", async () => {
+  document.getElementById("download-xlsx-btn").addEventListener("click", async () => {
     if (!currentProgramId) return;
     const { data: members, error } = await supabase
       .from("team_members")
@@ -558,22 +561,53 @@
       alert("Couldn't load roster: " + error.message);
       return;
     }
-    const csv = membersToCsvRows(members || []);
-    const blob = new Blob([csv], { type: "text/csv" });
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Roster");
+    ws.columns = [
+      { header: "name", key: "name", width: 26 },
+      { header: "role", key: "role", width: 22 },
+      { header: "phone", key: "phone", width: 18 },
+      { header: "email", key: "email", width: 28 },
+    ];
+    ws.getRow(1).font = { bold: true };
+
+    (members || []).forEach((m) => {
+      ws.addRow({ name: m.name, role: roleLabel(m.role), phone: m.phone || "", email: m.email || "" });
+    });
+    const lastExistingRow = (members || []).length + 1;
+    for (let i = 0; i < BLANK_ROWS_IN_TEMPLATE; i++) ws.addRow({});
+
+    // Data validation on the Role column, covering existing rows plus all
+    // the blank rows below -- this is the actual dropdown.
+    for (let r = 2; r <= lastExistingRow + BLANK_ROWS_IN_TEMPLATE; r++) {
+      ws.getCell(`B${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [ROLE_LIST_FORMULA],
+        showErrorMessage: true,
+        errorStyle: "error",
+        errorTitle: "Invalid role",
+        error: "Pick a role from the dropdown -- Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, or Parent.",
+      };
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${currentProgramSlug || "team"}-roster.csv`;
+    a.download = `${currentProgramSlug || "team"}-roster.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   });
 
-  const csvFileInput = document.getElementById("csv-file-input");
-  document.getElementById("upload-csv-btn").addEventListener("click", () => csvFileInput.click());
+  const xlsxFileInput = document.getElementById("xlsx-file-input");
+  document.getElementById("upload-xlsx-btn").addEventListener("click", () => xlsxFileInput.click());
 
-  csvFileInput.addEventListener("change", async (e) => {
+  xlsxFileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     e.target.value = ""; // allow re-selecting the same file later
     if (!file || !currentProgramId) return;
@@ -581,47 +615,62 @@
     const summary = document.getElementById("csv-summary");
     summary.className = "";
     summary.style.display = "block";
-    summary.textContent = "Reading CSV...";
+    summary.textContent = "Reading spreadsheet...";
 
-    const text = await file.text();
-    const allRows = parseCsv(text);
-    if (allRows.length < 2) {
+    let ws;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      ws = wb.worksheets[0];
+    } catch (err) {
       summary.className = "error";
-      summary.textContent = "That CSV doesn't have any data rows below the header.";
+      summary.textContent = "Couldn't read that file -- make sure it's the .xlsx template (not a renamed CSV) and try again.";
+      return;
+    }
+    if (!ws) {
+      summary.className = "error";
+      summary.textContent = "That file doesn't have any sheets in it.";
       return;
     }
 
-    const header = allRows[0].map((h) => h.trim().toLowerCase());
+    const header = (ws.getRow(1).values || []).map((h) => String(h ?? "").trim().toLowerCase());
+    // ExcelJS row.values is 1-indexed with index 0 empty -- keep that offset
+    // rather than normalizing it away, so column letters and indices agree.
     const nameIdx = header.indexOf("name");
     const roleIdx = header.indexOf("role");
     const phoneIdx = header.indexOf("phone");
     const emailIdx = header.indexOf("email");
     if (nameIdx === -1 || roleIdx === -1) {
       summary.className = "error";
-      summary.textContent = 'CSV header must include at least "name" and "role" columns.';
+      summary.textContent = 'Header row must include at least "name" and "role" columns.';
       return;
     }
 
     const { data: session } = await supabase.auth.getSession();
     const creatorUserId = session.session.user.id;
-    const validRoles = ["player", "parent", "coach"];
 
     const successes = [];
     const failures = [];
+    const totalRows = ws.rowCount - 1;
 
-    for (const row of allRows.slice(1)) {
-      const name = (row[nameIdx] || "").trim();
-      let role = (row[roleIdx] || "").trim().toLowerCase();
-      const phone = phoneIdx !== -1 ? (row[phoneIdx] || "").trim() : "";
-      const email = emailIdx !== -1 ? (row[emailIdx] || "").trim() : "";
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r).values || [];
+      const name = String(row[nameIdx] ?? "").trim();
+      const roleRaw = String(row[roleIdx] ?? "").trim();
+      const phone = phoneIdx !== -1 ? String(row[phoneIdx] ?? "").trim() : "";
+      const email = emailIdx !== -1 ? String(row[emailIdx] ?? "").trim() : "";
 
-      if (!name) continue; // silently skip fully blank rows
-      if (!validRoles.includes(role)) {
-        failures.push(`${name || "(unnamed row)"}: role must be player, parent, or coach (got "${role}")`);
+      if (!name && !roleRaw) continue; // silently skip fully blank rows
+      const role = roleSlugFrom(roleRaw);
+      if (!name || !role) {
+        if (name || roleRaw) {
+          failures.push(`${name || "(unnamed row)"}: role must be one of ${ROLES.map((r) => r.label).join(", ")} (got "${roleRaw}")`);
+        }
         continue;
       }
 
-      summary.textContent = `Adding ${successes.length + failures.length + 1} of ${allRows.length - 1}...`;
+      summary.textContent = `Adding ${successes.length + failures.length + 1} of ${totalRows}...`;
       const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
       if (result.ok) successes.push(result);
       else failures.push(result.error);

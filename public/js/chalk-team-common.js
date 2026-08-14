@@ -30,11 +30,14 @@
   const OFFENSE_SUBGROUPS = ["Man", "Zone", "Press Break"];
   const DEFENSE_SUBGROUPS = ["Man", "Zone", "Press"];
 
+  // Fallback only — used when a program has no explicit `crest_label` set in
+  // the database. Real programs should set crest_label/color_primary/
+  // color_secondary explicitly (see the SQL migration) rather than rely on
+  // this guessed-from-name fallback, since guessing has already been wrong
+  // once (Dartmouth as "DART").
   const INITIALS_OVERRIDES = {
     "melo-16u": "MELO",
     "dematha": "DM",
-    "lsu": "LSU",
-    "dartmouth": "DART",
   };
 
   const LEVEL_LABELS = {
@@ -52,9 +55,10 @@
   }
 
   function initialsFor(program) {
-    const key = (program.slug || "").toLowerCase();
+    if (program && program.crest_label) return program.crest_label;
+    const key = ((program && program.slug) || "").toLowerCase();
     if (INITIALS_OVERRIDES[key]) return INITIALS_OVERRIDES[key];
-    const words = (program.name || program.slug || "?").split(/\s+/).filter(Boolean);
+    const words = ((program && program.name) || (program && program.slug) || "?").split(/\s+/).filter(Boolean);
     const letters = words.map((w) => w[0]).join("").toUpperCase();
     return letters.slice(0, 5) || "?";
   }
@@ -62,6 +66,65 @@
   function levelLabel(level) {
     if (!level) return "";
     return LEVEL_LABELS[level] || String(level).replace(/-/g, " ").toUpperCase();
+  }
+
+  // Levels at which it's appropriate to publicly name the head coach on the
+  // team hub page. Named college/pro coaches are public figures with public
+  // rosters; naming a specific coach at youth/high-school/prep level is more
+  // privacy-sensitive given this app's audience skews youth/HS, so those
+  // levels always fall back to the generic audience line instead.
+  const COACH_NAME_LEVELS = ["college", "pro"];
+
+  // Only the youth level's audience line mentions parents by name — every
+  // other level (high-school, prep, college, pro) phrases the line as
+  // players & coaches only.
+  function coachLineFor(program) {
+    const level = program.level || "";
+    const levelLbl = levelLabel(level);
+    if (COACH_NAME_LEVELS.indexOf(level) !== -1 && program.coach_name) {
+      return `Head Coach ${escapeHtml(program.coach_name)} &middot; Built for players &amp; coaches`;
+    }
+    if (level === "youth") {
+      return levelLbl
+        ? `Built for ${levelLbl.toLowerCase()} players, parents &amp; coaches`
+        : "Built for players, parents &amp; coaches";
+    }
+    return levelLbl
+      ? `Built for ${levelLbl.toLowerCase()} players &amp; coaches`
+      : "Built for players &amp; coaches";
+  }
+
+  // Inserts (or removes) the optional hero photo + credit line. `heroEl` is
+  // the .hero container; `photoUrl`/`creditLabel`/`creditHref` come straight
+  // from the programs row. When photoUrl is falsy, this is a no-op and the
+  // plain gradient-crest hero renders exactly as it did before photos
+  // existed in the data model.
+  function renderHeroPhoto(heroEl, program) {
+    if (!heroEl || !program || !program.hero_photo_url) return;
+    const photoDiv = document.createElement("div");
+    photoDiv.className = "hero-photo";
+    const img = document.createElement("img");
+    img.src = program.hero_photo_url;
+    img.alt = "";
+    img.loading = "eager";
+    photoDiv.appendChild(img);
+    heroEl.insertBefore(photoDiv, heroEl.firstChild);
+
+    if (program.photo_credit_label) {
+      const credit = document.createElement("div");
+      credit.className = "photo-credit";
+      if (program.photo_credit_url) {
+        const a = document.createElement("a");
+        a.href = program.photo_credit_url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = program.photo_credit_label;
+        credit.appendChild(a);
+      } else {
+        credit.textContent = program.photo_credit_label;
+      }
+      heroEl.appendChild(credit);
+    }
   }
 
   // Deterministic per-program accent color so different programs feel
@@ -77,13 +140,39 @@
     return h % 360;
   }
 
+  // Prefer the program's real official colors (color_primary/color_secondary,
+  // set explicitly in the database — see the SQL migration) over the
+  // hash-based placeholder. The hash fallback only kicks in for programs
+  // that haven't had real colors entered yet, so future programs still look
+  // visually distinct out of the box before anyone gets around to it.
   function applyAccent(program) {
-    const hue = hashHue(program.slug || program.name || "chalktalk");
+    if (program && program.color_primary) {
+      const primary = program.color_primary;
+      const secondary = program.color_secondary || primary;
+      document.documentElement.style.setProperty("--accent-glow", hexToGlow(primary));
+      document.documentElement.style.setProperty("--accent-crest", `linear-gradient(160deg, ${primary}, ${secondary})`);
+      document.documentElement.style.setProperty("--crest-font", (program.crest_font || "'Bebas Neue', sans-serif"));
+      return;
+    }
+    const hue = hashHue((program && program.slug) || (program && program.name) || "chalktalk");
     const glow = `hsla(${hue}, 70%, 55%, .28)`;
     const crestFrom = `hsl(${hue}, 55%, 30%)`;
     const crestTo = `hsl(${hue}, 55%, 14%)`;
     document.documentElement.style.setProperty("--accent-glow", glow);
     document.documentElement.style.setProperty("--accent-crest", `linear-gradient(160deg, ${crestFrom}, ${crestTo})`);
+    document.documentElement.style.setProperty("--crest-font", "'Bebas Neue', sans-serif");
+  }
+
+  // Converts a #rrggbb hex color to a translucent glow color for the hero
+  // background radial gradient. Falls back to a neutral gold glow if the
+  // color string doesn't parse (defensive — real data should always be a
+  // clean hex string).
+  function hexToGlow(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return "rgba(240,180,41,.28)";
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgba(${r}, ${g}, ${b}, .32)`;
   }
 
   function playCard(play, opts) {
@@ -228,16 +317,20 @@
     });
   }
 
-  // Infers a Man/Zone/Press(-Break) sub-bucket from a play's title text.
-  // Returns null if no keyword matches — callers should fall back to a
-  // flat (ungrouped) grid rather than inventing a bucket for it.
-  function inferSubgroup(play, kind) {
-    const t = (play.title || "").toLowerCase();
-    if (/\bzone\b/.test(t)) return "Zone";
-    if (kind === "offense" && /\bpress\b/.test(t)) return "Press Break";
-    if (kind === "defense" && /\bpress\b/.test(t)) return "Press";
-    if (/\bman\b/.test(t)) return "Man";
-    return null;
+  // Maps the real `sub_category` DB value (set explicitly by the coach at
+  // play-creation time — see public/create.html) to its display label for
+  // the offense/defense subpages. No inference from title text anymore:
+  // every offense/defense play carries an explicit sub_category, so there
+  // is no "Other" bucket to fall back to.
+  const SUBGROUP_LABELS = {
+    man: "Man",
+    zone: "Zone",
+    press_break: "Press Break",
+    press: "Press",
+  };
+
+  function subgroupLabel(subCategory) {
+    return SUBGROUP_LABELS[subCategory] || null;
   }
 
   global.ChalkTeam = {
@@ -247,12 +340,14 @@
     escapeHtml,
     initialsFor,
     levelLabel,
+    coachLineFor,
+    renderHeroPhoto,
     applyAccent,
     playCard,
     ghostCard,
     wireAccessModal,
     renderSectionNav,
     initSearch,
-    inferSubgroup,
+    subgroupLabel,
   };
 })(window);

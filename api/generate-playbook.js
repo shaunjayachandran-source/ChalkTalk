@@ -26,13 +26,20 @@
  * generated/<program>/<slug>.html path.
  *
  * Body (JSON):
- *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string }
+ *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string }
  *
  *   category is one of PLAY_CATEGORIES below (offense/defense/slob/blob/special).
  *   It powers the public team directory page (public/team.html) so plays can
  *   be grouped into the right section there -- purely organizational, no
  *   effect on the generated playbook content itself. Falls back to null
  *   (shown as "Uncategorized" on the team page) if omitted or invalid.
+ *
+ *   subCategory confirms the Man/Zone/Press(-Break) bucket for the public
+ *   Offense/Defense subpages -- required (and validated) whenever category
+ *   is "offense" or "defense", per SUB_CATEGORIES_BY_CATEGORY below. There is
+ *   deliberately no inferred/"Other" fallback: a coach must confirm this at
+ *   build time. Ignored (stored as null) for slob/blob/special, which stay
+ *   flat grids with no sub-grouping.
  *
  * Response (JSON):
  *   { url: string }   -- public Blob URL of the generated playbook
@@ -48,6 +55,15 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
 const PLAY_CATEGORIES = ["offense", "defense", "slob", "blob", "special"];
+
+// Which sub_category values are valid for each category that requires one.
+// Offense uses "press_break" (press-break terminology); defense uses plain
+// "press". SLOB/BLOB/Special have no entry here -- they never get a
+// sub_category.
+const SUB_CATEGORIES_BY_CATEGORY = {
+  offense: ["man", "zone", "press_break"],
+  defense: ["man", "zone", "press"],
+};
 
 const PLAYER_COLORS = {
   1: { fill: "#f0b429", stroke: "#ffd060" },
@@ -96,13 +112,30 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { programId, brief, category } = body;
+  const { programId, brief, category, subCategory } = body;
 
   if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
     return sendJson(res, { error: "Missing or invalid brief" }, 400);
   }
 
   const resolvedCategory = PLAY_CATEGORIES.includes(category) ? category : null;
+
+  // subCategory is only meaningful (and required) for offense/defense. If
+  // this category needs one but the value sent isn't in its allowed set,
+  // reject outright rather than silently storing null and letting the play
+  // fall into an inferred/"Other" bucket downstream.
+  const allowedSubCategories = SUB_CATEGORIES_BY_CATEGORY[resolvedCategory];
+  let resolvedSubCategory = null;
+  if (allowedSubCategories) {
+    if (!allowedSubCategories.includes(subCategory)) {
+      return sendJson(
+        res,
+        { error: `subCategory must be one of: ${allowedSubCategories.join(", ")} for category "${resolvedCategory}"` },
+        400
+      );
+    }
+    resolvedSubCategory = subCategory;
+  }
 
   const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
@@ -138,6 +171,7 @@ export default async function handler(req, res) {
             slug,
             title: brief.playName || "Untitled Play",
             play_type: resolvedCategory,
+            sub_category: resolvedSubCategory,
             phase_count: brief.phases.length,
             court_type: brief.courtType || "half",
             status: "published",
