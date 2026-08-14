@@ -26,7 +26,13 @@
  * generated/<program>/<slug>.html path.
  *
  * Body (JSON):
- *   { programId: string, brief: { ...see generate-brief.js schema } }
+ *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string }
+ *
+ *   category is one of PLAY_CATEGORIES below (offense/defense/slob/blob/special).
+ *   It powers the public team directory page (public/team.html) so plays can
+ *   be grouped into the right section there -- purely organizational, no
+ *   effect on the generated playbook content itself. Falls back to null
+ *   (shown as "Uncategorized" on the team page) if omitted or invalid.
  *
  * Response (JSON):
  *   { url: string }   -- public Blob URL of the generated playbook
@@ -40,6 +46,8 @@ export const config = { maxDuration: 60 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
+
+const PLAY_CATEGORIES = ["offense", "defense", "slob", "blob", "special"];
 
 const PLAYER_COLORS = {
   1: { fill: "#f0b429", stroke: "#ffd060" },
@@ -88,11 +96,13 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { programId, brief } = body;
+  const { programId, brief, category } = body;
 
   if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
     return sendJson(res, { error: "Missing or invalid brief" }, 400);
   }
+
+  const resolvedCategory = PLAY_CATEGORIES.includes(category) ? category : null;
 
   const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
@@ -127,7 +137,7 @@ export default async function handler(req, res) {
             program_id: programId,
             slug,
             title: brief.playName || "Untitled Play",
-            play_type: null,
+            play_type: resolvedCategory,
             phase_count: brief.phases.length,
             court_type: brief.courtType || "half",
             status: "published",
