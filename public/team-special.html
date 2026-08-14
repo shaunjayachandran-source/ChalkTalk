@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Specials — ChalkTalk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="/css/chalk-team.css" />
+</head>
+<body>
+
+<div id="loading">Loading specials page...</div>
+<div id="not-found" style="display:none;">No program found for this link.</div>
+
+<div id="page" style="display:none;">
+  <nav class="section-nav" id="section-nav"></nav>
+
+  <div class="page-header">
+    <a class="home-link" href="team.html" id="home-link">&larr; Return to Team Hub</a>
+    <div class="page-title-row">
+      <h1>Specials</h1>
+      <div class="team-tag" id="team-tag"></div>
+    </div>
+
+    <div class="search-wrap" style="margin:18px 0 0;max-width:100%;">
+      <input type="text" id="chalkSearch" placeholder="Search plays, sets, coverages..." autocomplete="off" />
+      <div class="search-results" id="chalkSearchResults"></div>
+    </div>
+  </div>
+
+  <section class="section" id="special">
+    <div class="section-head">
+      <h2>Specials</h2>
+      <p>ATOs, Press-Break &amp; End-Game</p>
+    </div>
+    <div class="grid" id="special-content"></div>
+  </section>
+
+  <footer>
+    <div class="mark"><b>CHALK</b>TALK</div>
+    <div class="tagline" id="footer-tagline"></div>
+  </footer>
+</div>
+
+<div id="access-modal">
+  <div class="box">
+    <h3>This play is private</h3>
+    <p>Full diagrams and coaching notes for this play are shared only with people who have a personal access link from their coach. Ask your coach for your player, parent, or coach link to view it.</p>
+    <button id="access-modal-close">Got it</button>
+  </div>
+</div>
+
+<script src="/js/chalk-team-common.js"></script>
+<script type="module">
+  import { supabase } from "/js/supabase-client.js";
+
+  const CT = window.ChalkTeam;
+  const PLAY_TYPE = "special";
+  const LABEL = "Specials";
+
+  async function init() {
+    const slug = new URLSearchParams(window.location.search).get("slug");
+    if (!slug) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("not-found").style.display = "block";
+      return;
+    }
+
+    const { data: program, error: programErr } = await supabase
+      .from("team_directory")
+      .select("id, slug, name, level")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (programErr || !program) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("not-found").style.display = "block";
+      return;
+    }
+
+    const { data: playsData } = await supabase
+      .from("play_directory")
+      .select("title, play_type, phase_count, court_type, updated_at")
+      .eq("program_id", program.id);
+    const plays = playsData || [];
+    const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
+
+    CT.applyAccent(program);
+    document.title = `${LABEL} — ${program.name} — ChalkTalk`;
+    document.getElementById("home-link").href = `team.html?slug=${encodeURIComponent(slug)}`;
+    document.getElementById("team-tag").textContent = program.name;
+    document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+    document.getElementById("section-nav").innerHTML = CT.renderSectionNav(slug, PLAY_TYPE);
+
+    const grid = document.getElementById("special-content");
+    if (catPlays.length) {
+      catPlays.forEach((p) => grid.appendChild(CT.playCard(p)));
+    } else {
+      grid.appendChild(CT.ghostCard(`No ${LABEL} calls yet`, "Runs through Intake Mode will show up here."));
+    }
+
+    const searchItems = catPlays.map((p) => ({
+      label: p.title,
+      hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
+      section: LABEL,
+      onSelect: () => document.getElementById("access-modal").style.display = "flex",
+    }));
+    CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("page").style.display = "block";
+  }
+
+  CT.wireAccessModal();
+  init();
+</script>
+</body>
+</html>
