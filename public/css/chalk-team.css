@@ -1,0 +1,578 @@
+/* Shared design system for ChalkTalk's public team pages:
+   team.html (hub) + team-offense/defense/slob/blob/special.html (subpages).
+   This app has no build step, so this file is <link>-ed directly by every
+   page rather than bundled — same pattern as /js/supabase-client.js being
+   imported directly by multiple pages. */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+:root{
+  --bg:#0d1017;
+  --bg-raised:#141a24;
+  --card:#161c27;
+  --line:#232b38;
+  --gold:#f0b429;
+  --gold-soft:#f7cf6a;
+  --teal:#1abc9c;
+  --ember:#ff5a3c;
+  --text:#eef1f6;
+  --dim:#8b93a3;
+  --dim2:#5c6472;
+  /* Per-program accent, overridden inline per program via JS (crest tint). */
+  --accent-glow: rgba(240,180,41,.28);
+  --accent-crest: linear-gradient(160deg,#21283a,#10141d);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none;}
+
+.eyebrow{
+  font-family:'DM Mono',monospace;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  font-size:.68rem;
+  color:var(--gold);
+}
+
+/* ---------- HERO (hub page) ---------- */
+.hero{
+  position:relative;
+  min-height:52vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  padding:48px 24px 40px;
+  overflow:hidden;
+  border-bottom:1px solid var(--line);
+}
+.hero-tex{
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 15%, var(--accent-glow), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 50% 100%, rgba(240,180,41,.06), transparent 70%),
+    repeating-linear-gradient(115deg, rgba(255,255,255,.015) 0 2px, transparent 2px 34px);
+}
+.hero-fade{
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg, rgba(13,16,23,.35) 0%, rgba(13,16,23,.55) 35%, rgba(13,16,23,.72) 65%, var(--bg) 96%);
+}
+.hero-inner{
+  position:relative;
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+  gap:14px;
+  width:100%;
+}
+.crest{
+  width:88px;
+  height:88px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--accent-crest);
+  border:2px solid var(--gold);
+  box-shadow:0 0 0 5px rgba(240,180,41,.08), 0 10px 30px rgba(0,0,0,.5);
+  animation:riseIn 1.1s ease-out both;
+}
+.crest span{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:2rem;
+  letter-spacing:.02em;
+  color:var(--gold-soft);
+}
+.team-name{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(2.4rem,7.5vw,4.4rem);
+  line-height:.92;
+  letter-spacing:.02em;
+  background:linear-gradient(180deg,#fff, var(--gold-soft) 70%, var(--gold));
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  filter:drop-shadow(0 2px 10px rgba(0,0,0,.65));
+  animation:riseIn 1.1s .1s ease-out both;
+}
+.team-sub{
+  font-family:'DM Mono',monospace;
+  letter-spacing:.32em;
+  text-transform:uppercase;
+  font-size:.76rem;
+  color:var(--dim);
+  animation:riseIn 1.1s .2s ease-out both;
+}
+.team-sub b{color:var(--teal);font-weight:500;}
+.hero-line{
+  margin-top:4px;
+  max-width:540px;
+  color:var(--dim);
+  font-size:.9rem;
+  line-height:1.5;
+  animation:riseIn 1.1s .3s ease-out both;
+}
+@keyframes riseIn{
+  from{opacity:0; transform:translateY(14px);}
+  to{opacity:1; transform:translateY(0);}
+}
+.sign-accent{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:14px;
+  padding:6px 14px;
+  border:1px solid rgba(240,180,41,.4);
+  border-radius:3px;
+  background:rgba(240,180,41,.06);
+  font-family:'DM Mono',monospace;
+  font-size:.66rem;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--gold-soft);
+  animation:riseIn 1.1s .4s ease-out both;
+}
+.sign-accent i{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--gold);
+  box-shadow:0 0 8px var(--gold);
+}
+.coach-line{
+  margin-top:10px;
+  font-family:'DM Mono',monospace;
+  font-size:.66rem;
+  letter-spacing:.1em;
+  color:var(--dim2);
+  animation:riseIn 1.1s .45s ease-out both;
+}
+.coach-line b{color:var(--dim);font-weight:500;}
+
+/* ---------- SEARCH ---------- */
+.search-wrap{
+  position:relative;
+  width:100%;
+  max-width:520px;
+  margin:22px auto 0;
+  z-index:5;
+}
+.search-wrap input{
+  width:100%;
+  background:var(--bg-raised);
+  border:1px solid var(--line);
+  border-radius:24px;
+  padding:13px 20px;
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  font-size:.9rem;
+  outline:none;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.search-wrap input::placeholder{color:var(--dim2);}
+.search-wrap input:focus{
+  border-color:var(--gold);
+  box-shadow:0 0 0 3px rgba(240,180,41,.12);
+}
+.search-results{
+  display:none;
+  position:absolute;
+  top:calc(100% + 8px);
+  left:0;
+  right:0;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow:0 16px 40px rgba(0,0,0,.5);
+  max-height:320px;
+  overflow-y:auto;
+  text-align:left;
+}
+.search-results.open{display:block;}
+.search-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  width:100%;
+  padding:11px 16px;
+  border:none;
+  border-bottom:1px solid var(--line);
+  background:none;
+  text-align:left;
+  color:var(--text);
+  font-size:.84rem;
+  cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+}
+.search-row:last-child{border-bottom:none;}
+.search-row:hover, .search-row.active{background:rgba(240,180,41,.08);}
+.search-row mark{
+  background:none;
+  color:var(--gold);
+  font-weight:600;
+}
+.search-row .sr-path{
+  font-family:'DM Mono',monospace;
+  font-size:.62rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--dim2);
+  white-space:nowrap;
+}
+.search-empty{
+  padding:14px 16px;
+  font-size:.8rem;
+  color:var(--dim2);
+  line-height:1.5;
+}
+
+/* ---------- BREADCRUMB / PAGE HEADER (subpages) ---------- */
+.page-header{
+  max-width:1180px;
+  margin:0 auto;
+  padding:26px 28px 18px;
+}
+.home-link{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-family:'DM Mono',monospace;
+  font-size:.68rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--dim);
+  margin-bottom:16px;
+}
+.home-link:hover{color:var(--gold-soft);}
+.page-title-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:10px 20px;
+}
+.page-title-row h1{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(2.2rem,6vw,3.2rem);
+  letter-spacing:.02em;
+}
+.page-title-row .team-tag{
+  font-family:'DM Mono',monospace;
+  font-size:.68rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--dim2);
+}
+
+/* ---------- SECTION NAV (sticky, shared by hub + subpages) ---------- */
+.section-nav{
+  position:sticky;
+  top:0;
+  z-index:10;
+  display:flex;
+  justify-content:center;
+  gap:6px;
+  padding:14px 16px;
+  background:rgba(13,16,23,.86);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+  flex-wrap:wrap;
+}
+.section-nav a{
+  font-family:'DM Mono',monospace;
+  font-size:.72rem;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--dim);
+  padding:8px 16px;
+  border-radius:20px;
+  border:1px solid transparent;
+  transition:color .2s ease, border-color .2s ease, background .2s ease;
+}
+.section-nav a:hover{color:var(--text);}
+.section-nav a.active{
+  color:var(--gold);
+  border-color:rgba(240,180,41,.35);
+  background:rgba(240,180,41,.06);
+}
+
+/* ---------- SECTIONS ---------- */
+.section{
+  max-width:1180px;
+  margin:0 auto;
+  padding:36px 28px 24px;
+  scroll-margin-top:90px;
+}
+.section-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 24px;
+  margin-bottom:30px;
+  border-bottom:1px solid var(--line);
+  padding-bottom:18px;
+}
+.section-head h2{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:2.6rem;
+  letter-spacing:.03em;
+}
+.section-head p{
+  font-family:'DM Mono',monospace;
+  font-size:.72rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--dim2);
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:16px;
+}
+.grid + .subhead{margin-top:34px;}
+
+.subhead{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-family:'DM Mono',monospace;
+  font-size:.7rem;
+  font-weight:500;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--teal);
+  margin:0 0 14px;
+}
+.subhead::after{
+  content:'';
+  flex:1;
+  height:1px;
+  background:var(--line);
+}
+
+/* ---------- Real play card ---------- */
+.card.play{
+  border:1px solid var(--line);
+  border-left:3px solid var(--gold);
+  background:var(--card);
+  border-radius:8px;
+  padding:20px 20px 18px;
+  min-height:150px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  cursor:pointer;
+  transition:border-color .2s ease, transform .2s ease;
+}
+.card.play:hover{border-color:var(--gold); transform:translateY(-2px);}
+.card.play .pt-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.5rem;
+  letter-spacing:.02em;
+}
+.card.play .pt-meta{
+  font-family:'DM Mono',monospace;
+  font-size:.66rem;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--dim2);
+}
+
+/* ---------- Ghost / empty-state card ---------- */
+.card.ghost{
+  position:relative;
+  border:1px dashed #2c3646;
+  border-left:1px dashed #2c3646;
+  background:transparent;
+  border-radius:6px;
+  padding:20px 20px 18px;
+  min-height:150px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  color:var(--dim2);
+  cursor:default;
+  scroll-margin-top:90px;
+  transition:border-color .3s ease, background .3s ease;
+}
+.card.ghost:hover{
+  border-color:var(--gold);
+  color:var(--gold-soft);
+  background:rgba(240,180,41,.04);
+}
+.card.ghost .plus{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:2.2rem;
+  line-height:1;
+}
+.card.ghost .ghost-label{
+  font-family:'DM Mono',monospace;
+  font-size:.68rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  margin-top:6px;
+}
+.card.ghost .ghost-hint{
+  font-size:.76rem;
+  color:var(--dim2);
+  margin-top:8px;
+  max-width:210px;
+  line-height:1.4;
+}
+
+/* ---------- Section link cards (hub page) ---------- */
+.link-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:16px;
+  max-width:1180px;
+  margin:40px auto 0;
+  padding:0 28px;
+}
+.link-card{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:22px 20px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--teal);
+  border-radius:8px;
+  background:var(--card);
+  transition:border-color .2s ease, transform .2s ease, background .2s ease;
+}
+.link-card:hover{
+  border-color:var(--gold);
+  border-left-color:var(--gold);
+  background:#181f2c;
+  transform:translateY(-2px);
+}
+.link-card .lc-title{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.7rem;
+  letter-spacing:.02em;
+}
+.link-card .lc-desc{
+  font-size:.82rem;
+  color:var(--dim);
+  line-height:1.45;
+}
+.link-card .lc-count{
+  margin-top:6px;
+  font-family:'DM Mono',monospace;
+  font-size:.64rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--dim2);
+}
+
+/* ---------- Notes panel ---------- */
+.notes{
+  max-width:1180px;
+  margin:0 auto;
+  padding:8px 28px 0;
+}
+.notes .box{
+  border:1px solid var(--line);
+  border-left:3px solid var(--teal);
+  background:var(--card);
+  border-radius:6px;
+  padding:18px 20px;
+  font-size:.86rem;
+  line-height:1.6;
+  color:var(--dim);
+}
+.notes .box b{color:var(--text);}
+.notes .box .tag2{
+  font-family:'DM Mono',monospace;
+  font-size:.62rem;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--teal);
+  display:block;
+  margin-bottom:8px;
+}
+
+/* ---------- FOOTER ---------- */
+footer{
+  margin-top:60px;
+  padding:36px 28px 60px;
+  border-top:1px solid var(--line);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  text-align:center;
+}
+footer .mark{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:1.1rem;
+  letter-spacing:.08em;
+  color:var(--dim);
+}
+footer .mark b{color:var(--gold);}
+footer .tagline{
+  font-family:'DM Mono',monospace;
+  font-size:.66rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--dim2);
+}
+
+/* ---------- Access modal (content-gating — do not remove) ---------- */
+#access-modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:50;
+  background:rgba(0,0,0,.6);
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+#access-modal .box{
+  background:var(--card);
+  border:1px solid var(--gold);
+  border-radius:10px;
+  padding:24px;
+  max-width:380px;
+  text-align:center;
+}
+#access-modal h3{font-family:'Bebas Neue',sans-serif; color:var(--gold); font-size:1.4rem; margin-bottom:10px; letter-spacing:.02em;}
+#access-modal p{color:var(--dim); font-size:.86rem; line-height:1.5; margin-bottom:16px;}
+#access-modal button{
+  background:var(--gold);
+  color:#0d1017;
+  border:none;
+  border-radius:6px;
+  padding:8px 18px;
+  font-family:'DM Mono',monospace;
+  font-size:.8rem;
+  cursor:pointer;
+}
+
+#loading, #not-found{text-align:center; padding:80px 20px; color:var(--dim);}
+
+@media (max-width:560px){
+  .section{padding:28px 18px 16px;}
+  .section-nav{gap:2px;padding:10px;}
+  .section-nav a{padding:7px 10px;font-size:.64rem;}
+  .page-header{padding:20px 18px 14px;}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important;}
+}

@@ -1,0 +1,495 @@
+diff --git a/api/generate-playbook.js b/api/generate-playbook.js
+index 134779f..6ebe3af 100644
+--- a/api/generate-playbook.js
++++ b/api/generate-playbook.js
+@@ -26,7 +26,7 @@
+  * generated/<program>/<slug>.html path.
+  *
+  * Body (JSON):
+- *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string }
++ *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string }
+  *
+  *   category is one of PLAY_CATEGORIES below (offense/defense/slob/blob/special).
+  *   It powers the public team directory page (public/team.html) so plays can
+@@ -34,6 +34,13 @@
+  *   effect on the generated playbook content itself. Falls back to null
+  *   (shown as "Uncategorized" on the team page) if omitted or invalid.
+  *
++ *   subCategory confirms the Man/Zone/Press(-Break) bucket for the public
++ *   Offense/Defense subpages -- required (and validated) whenever category
++ *   is "offense" or "defense", per SUB_CATEGORIES_BY_CATEGORY below. There is
++ *   deliberately no inferred/"Other" fallback: a coach must confirm this at
++ *   build time. Ignored (stored as null) for slob/blob/special, which stay
++ *   flat grids with no sub-grouping.
++ *
+  * Response (JSON):
+  *   { url: string }   -- public Blob URL of the generated playbook
+  *   or { error: string } with an appropriate status code
+@@ -49,6 +56,15 @@ const MODEL = "claude-sonnet-4-6";
+ 
+ const PLAY_CATEGORIES = ["offense", "defense", "slob", "blob", "special"];
+ 
++// Which sub_category values are valid for each category that requires one.
++// Offense uses "press_break" (press-break terminology); defense uses plain
++// "press". SLOB/BLOB/Special have no entry here -- they never get a
++// sub_category.
++const SUB_CATEGORIES_BY_CATEGORY = {
++  offense: ["man", "zone", "press_break"],
++  defense: ["man", "zone", "press"],
++};
++
+ const PLAYER_COLORS = {
+   1: { fill: "#f0b429", stroke: "#ffd060" },
+   2: { fill: "#27ae60", stroke: "#2ecc71" },
+@@ -96,7 +112,7 @@ export default async function handler(req, res) {
+     return sendJson(res, { error: "Invalid JSON body" }, 400);
+   }
+ 
+-  const { programId, brief, category } = body;
++  const { programId, brief, category, subCategory } = body;
+ 
+   if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
+     return sendJson(res, { error: "Missing or invalid brief" }, 400);
+@@ -104,6 +120,23 @@ export default async function handler(req, res) {
+ 
+   const resolvedCategory = PLAY_CATEGORIES.includes(category) ? category : null;
+ 
++  // subCategory is only meaningful (and required) for offense/defense. If
++  // this category needs one but the value sent isn't in its allowed set,
++  // reject outright rather than silently storing null and letting the play
++  // fall into an inferred/"Other" bucket downstream.
++  const allowedSubCategories = SUB_CATEGORIES_BY_CATEGORY[resolvedCategory];
++  let resolvedSubCategory = null;
++  if (allowedSubCategories) {
++    if (!allowedSubCategories.includes(subCategory)) {
++      return sendJson(
++        res,
++        { error: `subCategory must be one of: ${allowedSubCategories.join(", ")} for category "${resolvedCategory}"` },
++        400
++      );
++    }
++    resolvedSubCategory = subCategory;
++  }
++
+   const authResult = await validateCoachSession(req, programId);
+   if (!authResult.ok) {
+     return sendJson(res, { error: authResult.error }, authResult.status);
+@@ -138,6 +171,7 @@ export default async function handler(req, res) {
+             slug,
+             title: brief.playName || "Untitled Play",
+             play_type: resolvedCategory,
++            sub_category: resolvedSubCategory,
+             phase_count: brief.phases.length,
+             court_type: brief.courtType || "half",
+             status: "published",
+diff --git a/public/create.html b/public/create.html
+index 7d06e54..f67bf0f 100644
+--- a/public/create.html
++++ b/public/create.html
+@@ -225,6 +225,12 @@
+   </select>
+   <div style="color: var(--gray); font-size: 12px; margin-top: 6px;">Just for organizing your team's public directory page -- doesn't change how the play itself is built.</div>
+ 
++  <div id="sub-category-row">
++    <label for="sub-category">Sub-Category</label>
++    <select id="sub-category"></select>
++    <div style="color: var(--gray); font-size: 12px; margin-top: 6px;">Confirms which bucket (Man / Zone / Press) this play shows up under on the public Offense or Defense page -- required so nothing lands in a vague "Other" group.</div>
++  </div>
++
+   <label>Court Type</label>
+   <div class="radio-row">
+     <label><input type="radio" name="courtType" value="half" checked> Half Court</label>
+@@ -300,6 +306,9 @@
+   const previewErrorBox = document.getElementById('preview-error-box');
+   const programSelect = document.getElementById('programSelect');
+   const orientationRowWrap = document.getElementById('orientation-row-wrap');
++  const categorySelect = document.getElementById('category');
++  const subCategoryRow = document.getElementById('sub-category-row');
++  const subCategorySelect = document.getElementById('sub-category');
+ 
+   // The basket-position (up/down) choice only makes sense for half court --
+   // full court always shows both baskets. Hide it when Full Court is picked.
+@@ -312,6 +321,40 @@
+   );
+   updateOrientationVisibility();
+ 
++  // Sub-category (Man / Zone / Press) is only meaningful for Offense and
++  // Defense -- SLOB/BLOB/Special stay flat grids on the public pages, so we
++  // hide (and don't require) this field for those categories. The option
++  // list itself differs by category: Offense uses press-break terminology,
++  // Defense uses plain "Press".
++  const SUB_CATEGORY_OPTIONS = {
++    offense: [
++      { value: 'man', label: 'Man' },
++      { value: 'zone', label: 'Zone' },
++      { value: 'press_break', label: 'Press Break' },
++    ],
++    defense: [
++      { value: 'man', label: 'Man' },
++      { value: 'zone', label: 'Zone' },
++      { value: 'press', label: 'Press' },
++    ],
++  };
++
++  function updateSubCategoryVisibility() {
++    const category = categorySelect.value;
++    const options = SUB_CATEGORY_OPTIONS[category];
++    if (options) {
++      subCategorySelect.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
++      subCategorySelect.required = true;
++      subCategoryRow.style.display = 'block';
++    } else {
++      subCategorySelect.innerHTML = '';
++      subCategorySelect.required = false;
++      subCategoryRow.style.display = 'none';
++    }
++  }
++  categorySelect.addEventListener('change', updateSubCategoryVisibility);
++  updateSubCategoryVisibility();
++
+   async function loadPrograms() {
+     const { data, error } = await supabase.from('programs').select('id, slug, name').order('name');
+     if (error) {
+@@ -698,6 +741,16 @@
+   document.getElementById('confirmBtn').addEventListener('click', async () => {
+     const btn = document.getElementById('confirmBtn');
+     const buildStatusBox = document.getElementById('build-status-box');
++
++    // Offense/Defense require an explicit sub-category confirmation before
++    // building -- no silent fallback to an inferred/"Other" bucket.
++    const categoryValue = categorySelect.value;
++    const requiresSubCategory = !!SUB_CATEGORY_OPTIONS[categoryValue];
++    if (requiresSubCategory && !subCategorySelect.value) {
++      showPreviewError('Please confirm whether this is a Man, Zone, or Press set before building.');
++      return;
++    }
++
+     btn.disabled = true;
+     previewErrorBox.style.display = 'none';
+     buildStatusBox.style.display = 'block';
+@@ -719,7 +772,8 @@
+         body: JSON.stringify({
+           programId: programSelect.value,
+           brief: currentBrief,
+-          category: document.getElementById('category').value,
++          category: categoryValue,
++          subCategory: requiresSubCategory ? subCategorySelect.value : null,
+         }),
+       });
+ 
+--- a/public/team.html
++++ b/public/team.html
+@@ -14,7 +14,7 @@
+ <div id="not-found" style="display:none;">No program found for this link.</div>
+ 
+ <div id="page" style="display:none;">
+-  <div class="hero">
++  <div class="hero" id="hero">
+     <div class="hero-tex"></div>
+     <div class="hero-fade"></div>
+     <div class="hero-inner">
+@@ -71,7 +71,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, coach_name, hero_photo_url, photo_credit_label, photo_credit_url")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+@@ -88,6 +88,7 @@
+     const plays = playsData || [];
+ 
+     CT.applyAccent(program);
++    CT.renderHeroPhoto(document.getElementById("hero"), program);
+ 
+     document.title = `${program.name} — ChalkTalk`;
+     document.getElementById("crest-initials").textContent = CT.initialsFor(program);
+@@ -98,9 +99,7 @@
+     if (levelLbl) subParts.push(CT.escapeHtml(levelLbl));
+     subParts.push("<b>CHALKTALK PLAYBOOK</b>");
+     document.getElementById("team-sub").innerHTML = subParts.join(" &middot; ");
+-    document.getElementById("coach-line").textContent = levelLbl
+-      ? `Built for ${levelLbl.toLowerCase()} players, parents & coaches`
+-      : "Built for players, parents & coaches";
++    document.getElementById("coach-line").innerHTML = CT.coachLineFor(program);
+     document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+ 
+     const totalPlays = plays.length;
+--- a/public/css/chalk-team.css
++++ b/public/css/chalk-team.css
+@@ -67,6 +67,39 @@
+   inset:0;
+   background:linear-gradient(180deg, rgba(13,16,23,.35) 0%, rgba(13,16,23,.55) 35%, rgba(13,16,23,.72) 65%, var(--bg) 96%);
+ }
++/* Real hero photo (optional, per-program). Sits behind .hero-tex/.hero-fade
++   so the existing gradient/vignette treatment still applies on top of it.
++   When a program has no hero_photo_url, this element is simply never
++   inserted and the plain gradient-crest hero renders exactly as before. */
++.hero-photo{
++  position:absolute;
++  inset:0;
++  overflow:hidden;
++}
++.hero-photo img{
++  width:100%;
++  height:100%;
++  object-fit:cover;
++  object-position:center 20%;
++  display:block;
++  filter:brightness(.5) saturate(1.15);
++}
++.photo-credit{
++  position:absolute;
++  right:14px;
++  bottom:10px;
++  z-index:3;
++  font-family:'DM Mono',monospace;
++  font-size:.6rem;
++  letter-spacing:.04em;
++  color:rgba(238,241,246,.45);
++  text-shadow:0 1px 3px rgba(0,0,0,.6);
++}
++.photo-credit a{
++  color:rgba(238,241,246,.6);
++  text-decoration:underline;
++}
++.photo-credit a:hover{color:var(--gold);}
+ .hero-inner{
+   position:relative;
+   z-index:2;
+--- a/public/js/chalk-team-common.js
++++ b/public/js/chalk-team-common.js
+@@ -64,6 +64,65 @@
+     return LEVEL_LABELS[level] || String(level).replace(/-/g, " ").toUpperCase();
+   }
+ 
++  // Levels at which it's appropriate to publicly name the head coach on the
++  // team hub page. Named college/pro coaches are public figures with public
++  // rosters; naming a specific coach at youth/high-school/prep level is more
++  // privacy-sensitive given this app's audience skews youth/HS, so those
++  // levels always fall back to the generic audience line instead.
++  const COACH_NAME_LEVELS = ["college", "pro"];
++
++  // Only the youth level's audience line mentions parents by name — every
++  // other level (high-school, prep, college, pro) phrases the line as
++  // players & coaches only.
++  function coachLineFor(program) {
++    const level = program.level || "";
++    const levelLbl = levelLabel(level);
++    if (COACH_NAME_LEVELS.indexOf(level) !== -1 && program.coach_name) {
++      return `Head Coach ${escapeHtml(program.coach_name)} &middot; Built for players &amp; coaches`;
++    }
++    if (level === "youth") {
++      return levelLbl
++        ? `Built for ${levelLbl.toLowerCase()} players, parents &amp; coaches`
++        : "Built for players, parents &amp; coaches";
++    }
++    return levelLbl
++      ? `Built for ${levelLbl.toLowerCase()} players &amp; coaches`
++      : "Built for players &amp; coaches";
++  }
++
++  // Inserts (or removes) the optional hero photo + credit line. `heroEl` is
++  // the .hero container; `photoUrl`/`creditLabel`/`creditHref` come straight
++  // from the programs row. When photoUrl is falsy, this is a no-op and the
++  // plain gradient-crest hero renders exactly as it did before photos
++  // existed in the data model.
++  function renderHeroPhoto(heroEl, program) {
++    if (!heroEl || !program || !program.hero_photo_url) return;
++    const photoDiv = document.createElement("div");
++    photoDiv.className = "hero-photo";
++    const img = document.createElement("img");
++    img.src = program.hero_photo_url;
++    img.alt = "";
++    img.loading = "eager";
++    photoDiv.appendChild(img);
++    heroEl.insertBefore(photoDiv, heroEl.firstChild);
++
++    if (program.photo_credit_label) {
++      const credit = document.createElement("div");
++      credit.className = "photo-credit";
++      if (program.photo_credit_url) {
++        const a = document.createElement("a");
++        a.href = program.photo_credit_url;
++        a.target = "_blank";
++        a.rel = "noopener noreferrer";
++        a.textContent = program.photo_credit_label;
++        credit.appendChild(a);
++      } else {
++        credit.textContent = program.photo_credit_label;
++      }
++      heroEl.appendChild(credit);
++    }
++  }
++
+   // Deterministic per-program accent color so different programs feel
+   // visually distinct without any real crest/photo assets — a simple hash
+   // of the slug picks a hue, matching the "richer than a flat placeholder"
+@@ -228,16 +287,20 @@
+     });
+   }
+ 
+-  // Infers a Man/Zone/Press(-Break) sub-bucket from a play's title text.
+-  // Returns null if no keyword matches — callers should fall back to a
+-  // flat (ungrouped) grid rather than inventing a bucket for it.
+-  function inferSubgroup(play, kind) {
+-    const t = (play.title || "").toLowerCase();
+-    if (/\bzone\b/.test(t)) return "Zone";
+-    if (kind === "offense" && /\bpress\b/.test(t)) return "Press Break";
+-    if (kind === "defense" && /\bpress\b/.test(t)) return "Press";
+-    if (/\bman\b/.test(t)) return "Man";
+-    return null;
++  // Maps the real `sub_category` DB value (set explicitly by the coach at
++  // play-creation time — see public/create.html) to its display label for
++  // the offense/defense subpages. No inference from title text anymore:
++  // every offense/defense play carries an explicit sub_category, so there
++  // is no "Other" bucket to fall back to.
++  const SUBGROUP_LABELS = {
++    man: "Man",
++    zone: "Zone",
++    press_break: "Press Break",
++    press: "Press",
++  };
++
++  function subgroupLabel(subCategory) {
++    return SUBGROUP_LABELS[subCategory] || null;
+   }
+ 
+   global.ChalkTeam = {
+@@ -247,12 +310,14 @@
+     escapeHtml,
+     initialsFor,
+     levelLabel,
++    coachLineFor,
++    renderHeroPhoto,
+     applyAccent,
+     playCard,
+     ghostCard,
+     wireAccessModal,
+     renderSectionNav,
+     initSearch,
+-    inferSubgroup,
++    subgroupLabel,
+   };
+ })(window);
+--- a/public/team-offense.html
++++ b/public/team-offense.html
+@@ -81,7 +81,7 @@
+ 
+     const { data: playsData } = await supabase
+       .from("play_directory")
+-      .select("title, play_type, phase_count, court_type, updated_at")
++      .select("title, play_type, sub_category, phase_count, court_type, updated_at")
+       .eq("program_id", program.id);
+     const plays = playsData || [];
+     const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
+@@ -109,16 +109,16 @@
+         content.appendChild(grid);
+       });
+     } else {
+-      // Real plays exist — bucket them by inferred sub-group from the
+-      // title; anything that doesn't match a keyword goes in "Other" so we
+-      // never silently drop a real play.
++      // Real plays exist — bucket them strictly by the real sub_category
++      // column, set explicitly by the coach at play-creation time (see
++      // public/create.html). There is no inference from title text and no
++      // "Other" catch-all bucket: every offense play has a real man/zone/
++      // press_break sub_category once the coach confirms it during intake.
+       const buckets = {};
+       SUBGROUPS.forEach((s) => (buckets[s] = []));
+-      const other = [];
+       catPlays.forEach((p) => {
+-        const sub = CT.inferSubgroup(p, "offense");
++        const sub = CT.subgroupLabel(p.sub_category);
+         if (sub && buckets[sub]) buckets[sub].push(p);
+-        else other.push(p);
+       });
+ 
+       SUBGROUPS.forEach((sub) => {
+@@ -136,24 +136,13 @@
+         }
+         content.appendChild(grid);
+       });
+-
+-      if (other.length) {
+-        const head = document.createElement("div");
+-        head.className = "subhead";
+-        head.textContent = "Other";
+-        content.appendChild(head);
+-        const grid = document.createElement("div");
+-        grid.className = "grid";
+-        other.forEach((p) => grid.appendChild(CT.playCard(p)));
+-        content.appendChild(grid);
+-      }
+     }
+ 
+     const searchItems = catPlays.map((p) => ({
+       label: p.title,
+       hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
+       section: "Offense",
+-      sub: CT.inferSubgroup(p, "offense") || "",
++      sub: CT.subgroupLabel(p.sub_category) || "",
+       onSelect: () => document.getElementById("access-modal").style.display = "flex",
+     }));
+     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
+--- a/public/team-defense.html
++++ b/public/team-defense.html
+@@ -81,7 +81,7 @@
+ 
+     const { data: playsData } = await supabase
+       .from("play_directory")
+-      .select("title, play_type, phase_count, court_type, updated_at")
++      .select("title, play_type, sub_category, phase_count, court_type, updated_at")
+       .eq("program_id", program.id);
+     const plays = playsData || [];
+     const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
+@@ -109,16 +109,16 @@
+         content.appendChild(grid);
+       });
+     } else {
+-      // Real plays exist — bucket them by inferred sub-group from the
+-      // title; anything that doesn't match a keyword goes in "Other" so we
+-      // never silently drop a real play.
++      // Real plays exist — bucket them strictly by the real sub_category
++      // column, set explicitly by the coach at play-creation time (see
++      // public/create.html). There is no inference from title text and no
++      // "Other" catch-all bucket: every defense play has a real man/zone/
++      // press sub_category once the coach confirms it during intake.
+       const buckets = {};
+       SUBGROUPS.forEach((s) => (buckets[s] = []));
+-      const other = [];
+       catPlays.forEach((p) => {
+-        const sub = CT.inferSubgroup(p, "defense");
++        const sub = CT.subgroupLabel(p.sub_category);
+         if (sub && buckets[sub]) buckets[sub].push(p);
+-        else other.push(p);
+       });
+ 
+       SUBGROUPS.forEach((sub) => {
+@@ -136,24 +136,13 @@
+         }
+         content.appendChild(grid);
+       });
+-
+-      if (other.length) {
+-        const head = document.createElement("div");
+-        head.className = "subhead";
+-        head.textContent = "Other";
+-        content.appendChild(head);
+-        const grid = document.createElement("div");
+-        grid.className = "grid";
+-        other.forEach((p) => grid.appendChild(CT.playCard(p)));
+-        content.appendChild(grid);
+-      }
+     }
+ 
+     const searchItems = catPlays.map((p) => ({
+       label: p.title,
+       hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
+       section: "Defense",
+-      sub: CT.inferSubgroup(p, "defense") || "",
++      sub: CT.subgroupLabel(p.sub_category) || "",
+       onSelect: () => document.getElementById("access-modal").style.display = "flex",
+     }));
+     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
