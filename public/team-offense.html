@@ -69,7 +69,7 @@
 
     const { data: program, error: programErr } = await supabase
       .from("team_directory")
-      .select("id, slug, name, level")
+      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -81,7 +81,7 @@
 
     const { data: playsData } = await supabase
       .from("play_directory")
-      .select("title, play_type, phase_count, court_type, updated_at")
+      .select("title, play_type, sub_category, phase_count, court_type, updated_at")
       .eq("program_id", program.id);
     const plays = playsData || [];
     const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
@@ -109,16 +109,16 @@
         content.appendChild(grid);
       });
     } else {
-      // Real plays exist — bucket them by inferred sub-group from the
-      // title; anything that doesn't match a keyword goes in "Other" so we
-      // never silently drop a real play.
+      // Real plays exist — bucket them strictly by the real sub_category
+      // column, set explicitly by the coach at play-creation time (see
+      // public/create.html). There is no inference from title text and no
+      // "Other" catch-all bucket: every offense play has a real man/zone/
+      // press_break sub_category once the coach confirms it during intake.
       const buckets = {};
       SUBGROUPS.forEach((s) => (buckets[s] = []));
-      const other = [];
       catPlays.forEach((p) => {
-        const sub = CT.inferSubgroup(p, "offense");
+        const sub = CT.subgroupLabel(p.sub_category);
         if (sub && buckets[sub]) buckets[sub].push(p);
-        else other.push(p);
       });
 
       SUBGROUPS.forEach((sub) => {
@@ -136,24 +136,13 @@
         }
         content.appendChild(grid);
       });
-
-      if (other.length) {
-        const head = document.createElement("div");
-        head.className = "subhead";
-        head.textContent = "Other";
-        content.appendChild(head);
-        const grid = document.createElement("div");
-        grid.className = "grid";
-        other.forEach((p) => grid.appendChild(CT.playCard(p)));
-        content.appendChild(grid);
-      }
     }
 
     const searchItems = catPlays.map((p) => ({
       label: p.title,
       hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
       section: "Offense",
-      sub: CT.inferSubgroup(p, "offense") || "",
+      sub: CT.subgroupLabel(p.sub_category) || "",
       onSelect: () => document.getElementById("access-modal").style.display = "flex",
     }));
     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);

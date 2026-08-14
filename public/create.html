@@ -225,6 +225,12 @@
   </select>
   <div style="color: var(--gray); font-size: 12px; margin-top: 6px;">Just for organizing your team's public directory page -- doesn't change how the play itself is built.</div>
 
+  <div id="sub-category-row">
+    <label for="sub-category">Sub-Category</label>
+    <select id="sub-category"></select>
+    <div style="color: var(--gray); font-size: 12px; margin-top: 6px;">Confirms which bucket (Man / Zone / Press) this play shows up under on the public Offense or Defense page -- required so nothing lands in a vague "Other" group.</div>
+  </div>
+
   <label>Court Type</label>
   <div class="radio-row">
     <label><input type="radio" name="courtType" value="half" checked> Half Court</label>
@@ -300,6 +306,9 @@
   const previewErrorBox = document.getElementById('preview-error-box');
   const programSelect = document.getElementById('programSelect');
   const orientationRowWrap = document.getElementById('orientation-row-wrap');
+  const categorySelect = document.getElementById('category');
+  const subCategoryRow = document.getElementById('sub-category-row');
+  const subCategorySelect = document.getElementById('sub-category');
 
   // The basket-position (up/down) choice only makes sense for half court --
   // full court always shows both baskets. Hide it when Full Court is picked.
@@ -311,6 +320,40 @@
     el.addEventListener('change', updateOrientationVisibility)
   );
   updateOrientationVisibility();
+
+  // Sub-category (Man / Zone / Press) is only meaningful for Offense and
+  // Defense -- SLOB/BLOB/Special stay flat grids on the public pages, so we
+  // hide (and don't require) this field for those categories. The option
+  // list itself differs by category: Offense uses press-break terminology,
+  // Defense uses plain "Press".
+  const SUB_CATEGORY_OPTIONS = {
+    offense: [
+      { value: 'man', label: 'Man' },
+      { value: 'zone', label: 'Zone' },
+      { value: 'press_break', label: 'Press Break' },
+    ],
+    defense: [
+      { value: 'man', label: 'Man' },
+      { value: 'zone', label: 'Zone' },
+      { value: 'press', label: 'Press' },
+    ],
+  };
+
+  function updateSubCategoryVisibility() {
+    const category = categorySelect.value;
+    const options = SUB_CATEGORY_OPTIONS[category];
+    if (options) {
+      subCategorySelect.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+      subCategorySelect.required = true;
+      subCategoryRow.style.display = 'block';
+    } else {
+      subCategorySelect.innerHTML = '';
+      subCategorySelect.required = false;
+      subCategoryRow.style.display = 'none';
+    }
+  }
+  categorySelect.addEventListener('change', updateSubCategoryVisibility);
+  updateSubCategoryVisibility();
 
   async function loadPrograms() {
     const { data, error } = await supabase.from('programs').select('id, slug, name').order('name');
@@ -698,6 +741,16 @@
   document.getElementById('confirmBtn').addEventListener('click', async () => {
     const btn = document.getElementById('confirmBtn');
     const buildStatusBox = document.getElementById('build-status-box');
+
+    // Offense/Defense require an explicit sub-category confirmation before
+    // building -- no silent fallback to an inferred/"Other" bucket.
+    const categoryValue = categorySelect.value;
+    const requiresSubCategory = !!SUB_CATEGORY_OPTIONS[categoryValue];
+    if (requiresSubCategory && !subCategorySelect.value) {
+      showPreviewError('Please confirm whether this is a Man, Zone, or Press set before building.');
+      return;
+    }
+
     btn.disabled = true;
     previewErrorBox.style.display = 'none';
     buildStatusBox.style.display = 'block';
@@ -719,7 +772,8 @@
         body: JSON.stringify({
           programId: programSelect.value,
           brief: currentBrief,
-          category: document.getElementById('category').value,
+          category: categoryValue,
+          subCategory: requiresSubCategory ? subCategorySelect.value : null,
         }),
       });
 

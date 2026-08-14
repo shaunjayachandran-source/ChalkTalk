@@ -14,7 +14,7 @@
 <div id="not-found" style="display:none;">No program found for this link.</div>
 
 <div id="page" style="display:none;">
-  <div class="hero">
+  <div class="hero" id="hero">
     <div class="hero-tex"></div>
     <div class="hero-fade"></div>
     <div class="hero-inner">
@@ -71,7 +71,7 @@
 
     const { data: program, error: programErr } = await supabase
       .from("team_directory")
-      .select("id, slug, name, level")
+      .select("id, slug, name, level, coach_name, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -88,6 +88,7 @@
     const plays = playsData || [];
 
     CT.applyAccent(program);
+    CT.renderHeroPhoto(document.getElementById("hero"), program);
 
     document.title = `${program.name} — ChalkTalk`;
     document.getElementById("crest-initials").textContent = CT.initialsFor(program);
@@ -98,9 +99,7 @@
     if (levelLbl) subParts.push(CT.escapeHtml(levelLbl));
     subParts.push("<b>CHALKTALK PLAYBOOK</b>");
     document.getElementById("team-sub").innerHTML = subParts.join(" &middot; ");
-    document.getElementById("coach-line").textContent = levelLbl
-      ? `Built for ${levelLbl.toLowerCase()} players, parents & coaches`
-      : "Built for players, parents & coaches";
+    document.getElementById("coach-line").innerHTML = CT.coachLineFor(program);
     document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
 
     const totalPlays = plays.length;
