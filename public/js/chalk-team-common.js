@@ -81,7 +81,11 @@
   function coachLineFor(program) {
     const level = program.level || "";
     const levelLbl = levelLabel(level);
-    if (COACH_NAME_LEVELS.indexOf(level) !== -1 && program.coach_name) {
+    // A program can opt in to showing its coach's name even below college/
+    // pro level via `coach_name_public` -- e.g. RPCS, whose source material
+    // already names the coach publicly. This is a deliberate per-program
+    // override, not a change to the default privacy rule for youth/HS/prep.
+    if ((COACH_NAME_LEVELS.indexOf(level) !== -1 || program.coach_name_public) && program.coach_name) {
       return `Head Coach ${escapeHtml(program.coach_name)} &middot; Built for players &amp; coaches`;
     }
     if (level === "youth") {
