@@ -71,7 +71,7 @@
 
     const { data: program, error: programErr } = await supabase
       .from("team_directory")
-      .select("id, slug, name, level, coach_name, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary")
+      .select("id, slug, name, level, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary")
       .eq("slug", slug)
       .maybeSingle();
 
