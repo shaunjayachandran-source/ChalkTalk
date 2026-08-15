@@ -404,6 +404,13 @@
   };
 
   function initialsFor(program) {
+    // Matches the priority order in public/js/chalk-team-common.js: an
+    // explicit crest_label set on the program (via SQL or the Branding
+    // editor below) always wins, so the watermark stays in sync with
+    // whatever the coach has actually set -- it previously checked the
+    // local override list FIRST, which meant a real crest_label update
+    // (e.g. RPCS -> "REDS", Dartmouth -> "D") never reached the watermark.
+    if (program.crest_label) return program.crest_label;
     const key = (program.slug || "").toLowerCase();
     if (INITIALS_OVERRIDES[key]) return INITIALS_OVERRIDES[key];
     const words = (program.name || program.slug || "?").split(/\s+/).filter(Boolean);
