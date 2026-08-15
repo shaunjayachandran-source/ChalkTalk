@@ -1,0 +1,179 @@
+diff --git a/public/css/chalk-team.css b/public/css/chalk-team.css
+index c7b4cdd..7e8ab85 100644
+--- a/public/css/chalk-team.css
++++ b/public/css/chalk-team.css
+@@ -4,7 +4,7 @@
+    page rather than bundled — same pattern as /js/supabase-client.js being
+    imported directly by multiple pages. */
+ 
+-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
++@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&family=PT+Serif:wght@700&display=swap');
+ 
+ :root{
+   --bg:#0d1017;
+@@ -123,7 +123,11 @@ a{color:inherit;text-decoration:none;}
+   animation:riseIn 1.1s ease-out both;
+ }
+ .crest span{
+-  font-family:'Bebas Neue',sans-serif;
++  /* --crest-font is set per-program by applyAccent() in chalk-team-common.js
++     (program.crest_font), so a program can use a different letterform than
++     the default Bebas Neue -- e.g. a single-letter mark in a serif face.
++     Falls back to Bebas Neue if unset. */
++  font-family:var(--crest-font, 'Bebas Neue', sans-serif);
+   font-size:2rem;
+   letter-spacing:.02em;
+   color:var(--gold-soft);
+diff --git a/public/js/chalk-team-common.js b/public/js/chalk-team-common.js
+index 0fb4006..3c7471d 100644
+--- a/public/js/chalk-team-common.js
++++ b/public/js/chalk-team-common.js
+@@ -30,11 +30,14 @@
+   const OFFENSE_SUBGROUPS = ["Man", "Zone", "Press Break"];
+   const DEFENSE_SUBGROUPS = ["Man", "Zone", "Press"];
+ 
++  // Fallback only — used when a program has no explicit `crest_label` set in
++  // the database. Real programs should set crest_label/color_primary/
++  // color_secondary explicitly (see the SQL migration) rather than rely on
++  // this guessed-from-name fallback, since guessing has already been wrong
++  // once (Dartmouth as "DART").
+   const INITIALS_OVERRIDES = {
+     "melo-16u": "MELO",
+     "dematha": "DM",
+-    "lsu": "LSU",
+-    "dartmouth": "DART",
+   };
+ 
+   const LEVEL_LABELS = {
+@@ -52,9 +55,10 @@
+   }
+ 
+   function initialsFor(program) {
+-    const key = (program.slug || "").toLowerCase();
++    if (program && program.crest_label) return program.crest_label;
++    const key = ((program && program.slug) || "").toLowerCase();
+     if (INITIALS_OVERRIDES[key]) return INITIALS_OVERRIDES[key];
+-    const words = (program.name || program.slug || "?").split(/\s+/).filter(Boolean);
++    const words = ((program && program.name) || (program && program.slug) || "?").split(/\s+/).filter(Boolean);
+     const letters = words.map((w) => w[0]).join("").toUpperCase();
+     return letters.slice(0, 5) || "?";
+   }
+@@ -136,13 +140,39 @@
+     return h % 360;
+   }
+ 
++  // Prefer the program's real official colors (color_primary/color_secondary,
++  // set explicitly in the database — see the SQL migration) over the
++  // hash-based placeholder. The hash fallback only kicks in for programs
++  // that haven't had real colors entered yet, so future programs still look
++  // visually distinct out of the box before anyone gets around to it.
+   function applyAccent(program) {
+-    const hue = hashHue(program.slug || program.name || "chalktalk");
++    if (program && program.color_primary) {
++      const primary = program.color_primary;
++      const secondary = program.color_secondary || primary;
++      document.documentElement.style.setProperty("--accent-glow", hexToGlow(primary));
++      document.documentElement.style.setProperty("--accent-crest", `linear-gradient(160deg, ${primary}, ${secondary})`);
++      document.documentElement.style.setProperty("--crest-font", (program.crest_font || "'Bebas Neue', sans-serif"));
++      return;
++    }
++    const hue = hashHue((program && program.slug) || (program && program.name) || "chalktalk");
+     const glow = `hsla(${hue}, 70%, 55%, .28)`;
+     const crestFrom = `hsl(${hue}, 55%, 30%)`;
+     const crestTo = `hsl(${hue}, 55%, 14%)`;
+     document.documentElement.style.setProperty("--accent-glow", glow);
+     document.documentElement.style.setProperty("--accent-crest", `linear-gradient(160deg, ${crestFrom}, ${crestTo})`);
++    document.documentElement.style.setProperty("--crest-font", "'Bebas Neue', sans-serif");
++  }
++
++  // Converts a #rrggbb hex color to a translucent glow color for the hero
++  // background radial gradient. Falls back to a neutral gold glow if the
++  // color string doesn't parse (defensive — real data should always be a
++  // clean hex string).
++  function hexToGlow(hex) {
++    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
++    if (!m) return "rgba(240,180,41,.28)";
++    const n = parseInt(m[1], 16);
++    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
++    return `rgba(${r}, ${g}, ${b}, .32)`;
+   }
+ 
+   function playCard(play, opts) {
+diff --git a/public/team-blob.html b/public/team-blob.html
+index c0f7558..bfa8352 100644
+--- a/public/team-blob.html
++++ b/public/team-blob.html
+@@ -69,7 +69,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+diff --git a/public/team-defense.html b/public/team-defense.html
+index 5d22d50..b7c1093 100644
+--- a/public/team-defense.html
++++ b/public/team-defense.html
+@@ -69,7 +69,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+diff --git a/public/team-offense.html b/public/team-offense.html
+index d28715b..67a9a96 100644
+--- a/public/team-offense.html
++++ b/public/team-offense.html
+@@ -69,7 +69,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+diff --git a/public/team-slob.html b/public/team-slob.html
+index 6a7e20d..f116db7 100644
+--- a/public/team-slob.html
++++ b/public/team-slob.html
+@@ -69,7 +69,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+diff --git a/public/team-special.html b/public/team-special.html
+index dfb7935..8b3f8b0 100644
+--- a/public/team-special.html
++++ b/public/team-special.html
+@@ -69,7 +69,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level")
++      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
+diff --git a/public/team.html b/public/team.html
+index 962aff8..670c91e 100644
+--- a/public/team.html
++++ b/public/team.html
+@@ -71,7 +71,7 @@
+ 
+     const { data: program, error: programErr } = await supabase
+       .from("team_directory")
+-      .select("id, slug, name, level, coach_name, hero_photo_url, photo_credit_label, photo_credit_url")
++      .select("id, slug, name, level, coach_name, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary")
+       .eq("slug", slug)
+       .maybeSingle();
+ 
