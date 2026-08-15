@@ -63,6 +63,64 @@
     return letters.slice(0, 5) || "?";
   }
 
+  // Renders the crest circle's contents in priority order: a real inline
+  // SVG mark (`crest_svg` -- used for a hand-drawn emblem with no verified
+  // real logo asset, e.g. Monarchs' crown), then a real logo image
+  // (`crest_image_url` -- a genuine team logo, e.g. Dartmouth's), then
+  // falling back to plain text initials (`initialsFor`). `crestEl` is the
+  // .crest container div itself, not the inner span -- this function owns
+  // and replaces its entire contents.
+  function renderCrest(crestEl, program) {
+    if (!crestEl) return;
+    crestEl.innerHTML = "";
+    if (program && program.crest_svg) {
+      // Trusted content: crest_svg is only ever set by us (via SQL/the
+      // Branding editor), never derived from arbitrary user input, so
+      // innerHTML here is the same trust boundary as any other
+      // coach-authored field already rendered on this page.
+      crestEl.innerHTML = program.crest_svg;
+      return;
+    }
+    if (program && program.crest_image_url) {
+      const img = document.createElement("img");
+      img.src = program.crest_image_url;
+      img.alt = `${program.name || "Team"} logo`;
+      img.style.width = "70%";
+      img.style.height = "70%";
+      img.style.objectFit = "contain";
+      crestEl.appendChild(img);
+      return;
+    }
+    const span = document.createElement("span");
+    span.textContent = initialsFor(program);
+    crestEl.appendChild(span);
+  }
+
+  // Builds the small "sign accent" line under the hero -- location + venue,
+  // e.g. "BATON ROUGE, LOUISIANA · PETE MARAVICH ASSEMBLY CENTER". Falls
+  // back to the generic directory tagline when a program hasn't had this
+  // real data entered yet, so melo-16u/dematha and any future program
+  // without location/venue set keep their existing look, no regression.
+  function signAccentFor(program) {
+    const parts = [];
+    if (program && program.location_label) parts.push(program.location_label.toUpperCase());
+    if (program && program.venue_label) parts.push(program.venue_label.toUpperCase());
+    if (!parts.length) return "COACH-BUILT PLAYBOOK DIRECTORY";
+    return parts.map(escapeHtml).join(" &middot; ");
+  }
+
+  // League goes alongside the level in the small mono subtitle line (e.g.
+  // "COLLEGE · SEC"), matching the earlier mockups' team_sub treatment.
+  // Falls back to just the level label when a program has no league set.
+  function teamSubFor(program) {
+    const levelLbl = levelLabel(program && program.level);
+    const parts = [];
+    if (levelLbl) parts.push(escapeHtml(levelLbl));
+    if (program && program.league_label) parts.push(escapeHtml(program.league_label));
+    parts.push("<b>CHALKTALK PLAYBOOK</b>");
+    return parts.join(" &middot; ");
+  }
+
   function levelLabel(level) {
     if (!level) return "";
     return LEVEL_LABELS[level] || String(level).replace(/-/g, " ").toUpperCase();
@@ -343,6 +401,9 @@
     DEFENSE_SUBGROUPS,
     escapeHtml,
     initialsFor,
+    renderCrest,
+    signAccentFor,
+    teamSubFor,
     levelLabel,
     coachLineFor,
     renderHeroPhoto,

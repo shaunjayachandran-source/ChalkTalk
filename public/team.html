@@ -18,11 +18,11 @@
     <div class="hero-tex"></div>
     <div class="hero-fade"></div>
     <div class="hero-inner">
-      <div class="crest"><span id="crest-initials"></span></div>
+      <div class="crest" id="crest"></div>
       <div class="team-name" id="team-name"></div>
       <div class="team-sub" id="team-sub"></div>
       <div class="hero-line">Playbook directory — built for coaches, players, and parents to see the same system explained at the depth each of them needs.</div>
-      <div class="sign-accent"><i></i>COACH-BUILT PLAYBOOK DIRECTORY</div>
+      <div class="sign-accent"><i></i><span id="sign-accent-text">COACH-BUILT PLAYBOOK DIRECTORY</span></div>
       <div class="coach-line" id="coach-line"></div>
 
       <div class="search-wrap">
@@ -71,7 +71,7 @@
 
     const { data: program, error: programErr } = await supabase
       .from("team_directory")
-      .select("id, slug, name, level, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary")
+      .select("id, slug, name, level, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, crest_image_url, crest_svg, color_primary, color_secondary, league_label, venue_label, location_label")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -91,14 +91,10 @@
     CT.renderHeroPhoto(document.getElementById("hero"), program);
 
     document.title = `${program.name} — ChalkTalk`;
-    document.getElementById("crest-initials").textContent = CT.initialsFor(program);
+    CT.renderCrest(document.getElementById("crest"), program);
     document.getElementById("team-name").textContent = program.name.toUpperCase();
-
-    const levelLbl = CT.levelLabel(program.level);
-    const subParts = [];
-    if (levelLbl) subParts.push(CT.escapeHtml(levelLbl));
-    subParts.push("<b>CHALKTALK PLAYBOOK</b>");
-    document.getElementById("team-sub").innerHTML = subParts.join(" &middot; ");
+    document.getElementById("team-sub").innerHTML = CT.teamSubFor(program);
+    document.getElementById("sign-accent-text").innerHTML = CT.signAccentFor(program);
     document.getElementById("coach-line").innerHTML = CT.coachLineFor(program);
     document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
 
