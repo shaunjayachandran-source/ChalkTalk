@@ -1,0 +1,420 @@
+diff --git a/api/search-commons-photo.js b/api/search-commons-photo.js
+new file mode 100644
+index 0000000..ab4aa38
+--- /dev/null
++++ b/api/search-commons-photo.js
+@@ -0,0 +1,113 @@
++/**
++ * GET/POST /api/search-commons-photo?query=<text>
++ *
++ * Simple passthrough/reshape in front of Wikimedia Commons' public
++ * MediaWiki search API, used by the dashboard's Program Branding editor
++ * so a coach can search for a hero photo without leaving the dashboard.
++ *
++ * No API key, no auth -- Commons' search API is public and read-only, and
++ * nothing here touches Supabase or any per-coach data. This matches the
++ * pattern of api/blocked-asset.js (also public, no session check): only
++ * endpoints that read/write a program's own data (generate-playbook,
++ * generate-brief, serve-playbook) validate a Supabase session, because
++ * that's the actual point where access needs to be restricted.
++ *
++ * Accepts `query` as either a GET query-string param or a POST JSON body
++ * field, whichever's easiest for the caller -- this endpoint has no side
++ * effects either way, so there's no real POST-vs-GET semantic to enforce.
++ *
++ * Response (JSON):
++ *   { results: [ { title, thumbnailUrl, fullUrl, filePageUrl, artist, licenseShortName }, ... ] }
++ *   or { error: string } with an appropriate status code (only when the
++ *   fetch to Commons itself fails outright -- a zero-result search is a
++ *   normal 200 with an empty array, not an error).
++ */
++
++const COMMONS_API_URL = "https://commons.wikimedia.org/w/api.php";
++
++export default async function handler(req, res) {
++  if (req.method !== "GET" && req.method !== "POST") {
++    return sendJson(res, { error: "Method not allowed" }, 405);
++  }
++
++  const query =
++    req.method === "GET"
++      ? req.query?.query
++      : (req.body && typeof req.body === "object" ? req.body.query : undefined);
++
++  if (!query || typeof query !== "string" || !query.trim()) {
++    return sendJson(res, { error: "Missing query" }, 400);
++  }
++
++  const url = new URL(COMMONS_API_URL);
++  url.searchParams.set("action", "query");
++  url.searchParams.set("generator", "search");
++  url.searchParams.set("gsrsearch", query.trim());
++  url.searchParams.set("gsrnamespace", "6");
++  url.searchParams.set("gsrlimit", "8");
++  url.searchParams.set("prop", "imageinfo");
++  url.searchParams.set("iiprop", "url|extmetadata");
++  url.searchParams.set("iiurlwidth", "400");
++  url.searchParams.set("format", "json");
++  url.searchParams.set("origin", "*");
++
++  let data;
++  try {
++    const commonsRes = await fetch(url.toString());
++    if (!commonsRes.ok) {
++      return sendJson(res, { error: `Wikimedia Commons returned ${commonsRes.status}` }, 502);
++    }
++    data = await commonsRes.json();
++  } catch (err) {
++    return sendJson(res, { error: `Couldn't reach Wikimedia Commons: ${err.message}` }, 502);
++  }
++
++  return sendJson(res, { results: shapeResults(data) });
++}
++
++// Exported (in addition to being used internally) purely so it can be unit
++// tested against a saved sample API response without needing a live network
++// call -- see api/_lib/search-commons-photo.test.js.
++export function shapeResults(data) {
++  const pages = data?.query?.pages;
++  if (!pages || typeof pages !== "object") return [];
++
++  return Object.values(pages)
++    .map((page) => {
++      const info = Array.isArray(page.imageinfo) ? page.imageinfo[0] : null;
++      if (!info) return null;
++
++      // Prefer the width-limited thumbnail Commons generated for us
++      // (iiurlwidth=400); fall back to the full-res url if a thumbnail
++      // wasn't returned for some reason (e.g. the file is already tiny).
++      const thumbnailUrl = info.thumburl || info.url;
++      const fullUrl = info.url;
++      if (!thumbnailUrl || !fullUrl) return null;
++
++      const meta = info.extmetadata || {};
++      const artist = stripHtml(meta.Artist?.value || "");
++      const licenseShortName = stripHtml(meta.LicenseShortName?.value || "");
++
++      return {
++        title: page.title || "",
++        thumbnailUrl,
++        fullUrl,
++        filePageUrl: info.descriptionurl || info.descriptionshorturl || fullUrl,
++        artist,
++        licenseShortName,
++      };
++    })
++    .filter(Boolean)
++    .slice(0, 8);
++}
++
++function stripHtml(str) {
++  return String(str || "")
++    .replace(/<[^>]*>/g, "")
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++function sendJson(res, obj, status = 200) {
++  res.status(status).json(obj);
++}
+diff --git a/public/dashboard.html b/public/dashboard.html
+index f739740..7bd7500 100644
+--- a/public/dashboard.html
++++ b/public/dashboard.html
+@@ -187,6 +187,47 @@
+     font-size: 12px;
+   }
+   #csv-summary.error { background: rgba(255,123,110,.1); border-color: var(--red); }
++
++  /* ---- Program Branding card ---- */
++  .branding-grid { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
++  .crest-preview-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; width: 90px; }
++  .crest-preview {
++    width: 64px; height: 64px; border-radius: 50%;
++    display: flex; align-items: center; justify-content: center;
++    font-size: 20px; letter-spacing: 1px; color: #fff;
++    text-shadow: 0 1px 2px rgba(0,0,0,.4);
++    background: linear-gradient(160deg, #f0b429, #8a6a10);
++    border: 2px solid rgba(255,255,255,.15);
++  }
++  .branding-fields { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 4px; }
++  .branding-fields label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px; }
++  .branding-fields label:first-child { margin-top: 0; }
++  .branding-fields input[type="text"] {
++    background: #0d1017; border: 1px solid var(--border); color: var(--text);
++    padding: 7px 10px; border-radius: 6px; font-family: 'DM Mono', monospace; font-size: 13px; width: 100%;
++  }
++  .branding-fields input[type="color"] {
++    width: 100%; height: 34px; padding: 2px; background: #0d1017; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
++  }
++  .field-hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
++  .color-row { display: flex; gap: 14px; }
++  .color-row > div { flex: 1; }
++  .checkbox-label { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: normal; font-size: 12px; color: var(--text); cursor: pointer; }
++  .checkbox-label input { margin: 0; }
++  #brand-hero-thumb { display: none; max-width: 160px; max-height: 90px; border-radius: 6px; border: 1px solid var(--border); margin-top: 8px; object-fit: cover; }
++  .commons-search { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
++  .commons-search .search-row { display: flex; gap: 8px; }
++  .commons-search .search-row input { flex: 1; }
++  .commons-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
++  .commons-result {
++    cursor: pointer; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
++    background: #0d1017; position: relative; aspect-ratio: 1 / 1;
++  }
++  .commons-result img { width: 100%; height: 100%; object-fit: cover; display: block; }
++  .commons-result:hover { border-color: var(--gold); }
++  .commons-status { color: var(--muted); font-size: 12px; margin-top: 8px; }
++  #brand-save-status { color: var(--green); opacity: 0; transition: opacity 0.4s; }
++  #brand-save-status.show { opacity: 1; }
+ </style>
+ </head>
+ <body>
+@@ -202,6 +243,65 @@
+     <label style="color:var(--muted); font-size:12px; display:block; margin-bottom:6px;">Program</label>
+     <select id="program-select"></select>
+ 
++    <div class="card">
++      <h2>Program Branding</h2>
++      <div class="sub">Crest, colors, coach line, and hero photo shown on this program's public team page.</div>
++      <div class="branding-grid">
++        <div class="crest-preview-wrap">
++          <div class="crest-preview" id="brand-crest-preview">?</div>
++          <div class="field-hint" style="margin:0; text-align:center;">Live preview</div>
++        </div>
++        <div class="branding-fields">
++          <label for="brand-crest-label">Crest label override</label>
++          <input type="text" id="brand-crest-label" placeholder="e.g. RPCS" maxlength="5" />
++          <div class="field-hint" id="brand-crest-fallback-hint"></div>
++
++          <div class="color-row">
++            <div>
++              <label for="brand-color-primary">Primary color</label>
++              <input type="color" id="brand-color-primary" value="#f0b429" />
++            </div>
++            <div>
++              <label for="brand-color-secondary">Secondary color</label>
++              <input type="color" id="brand-color-secondary" value="#8a6a10" />
++            </div>
++          </div>
++
++          <label for="brand-coach-name">Coach name</label>
++          <input type="text" id="brand-coach-name" placeholder="Coach's full name" />
++          <label class="checkbox-label" style="margin-top:8px;">
++            <input type="checkbox" id="brand-coach-name-public" />
++            Show coach name publicly
++          </label>
++
++          <label for="brand-hero-photo-url">Hero photo URL</label>
++          <input type="text" id="brand-hero-photo-url" placeholder="https://..." />
++          <img id="brand-hero-thumb" alt="Hero photo preview" />
++
++          <label for="brand-photo-credit-label">Photo credit label</label>
++          <input type="text" id="brand-photo-credit-label" placeholder="Photo: Jane Doe, CC BY-SA 4.0" />
++
++          <label for="brand-photo-credit-url">Photo credit URL</label>
++          <input type="text" id="brand-photo-credit-url" placeholder="https://commons.wikimedia.org/wiki/File:..." />
++
++          <div class="commons-search">
++            <label style="margin-top:0;">Search Wikimedia Commons for a photo</label>
++            <div class="search-row">
++              <input type="text" id="commons-query" placeholder="Search term" />
++              <button class="action secondary" id="commons-search-btn">Search</button>
++            </div>
++            <div class="commons-status" id="commons-status"></div>
++            <div class="commons-results" id="commons-results"></div>
++          </div>
++
++          <div style="display:flex; align-items:center; gap:12px; margin-top:16px;">
++            <button class="action" id="brand-save-btn">Save branding</button>
++            <span id="brand-save-status">Saved</span>
++          </div>
++        </div>
++      </div>
++    </div>
++
+     <div class="card">
+       <h2>Plays</h2>
+       <div class="sub header-actions" style="justify-content:space-between;">
+@@ -330,7 +430,12 @@
+   }
+ 
+   async function loadPrograms() {
+-    const { data, error } = await supabase.from("programs").select("id, slug, name").order("name");
++    const { data, error } = await supabase
++      .from("programs")
++      .select(
++        "id, slug, name, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary"
++      )
++      .order("name");
+     if (error) {
+       document.getElementById("loading").textContent = "Couldn't load programs: " + error.message;
+       return;
+@@ -372,9 +477,168 @@
+   }
+ 
+   async function loadProgramDetail(programId) {
++    const program = programs.find((p) => p.id === programId);
++    loadBrandingForm(program);
+     await Promise.all([loadPlays(programId), loadMembers(programId)]);
+   }
+ 
++  // ---- Program Branding card ----
++  // Mirrors the crest/coach-line/accent-color rendering logic in
++  // public/js/chalk-team-common.js (initialsFor / applyAccent) closely
++  // enough for a live preview, without importing that file -- it's a
++  // classic (non-module) script written for the public pages, and pulling
++  // it in here would be more coupling than this small preview needs.
++  function crestFallbackInitials(program) {
++    if (!program) return "?";
++    return initialsFor(program); // already defined above for the watermark
++  }
++
++  function hexToGradient(primary, secondary) {
++    const p = /^#[0-9a-f]{6}$/i.test(primary || "") ? primary : "#f0b429";
++    const s = /^#[0-9a-f]{6}$/i.test(secondary || "") ? secondary : p;
++    return `linear-gradient(160deg, ${p}, ${s})`;
++  }
++
++  function updateCrestPreview() {
++    const preview = document.getElementById("brand-crest-preview");
++    const label = document.getElementById("brand-crest-label").value.trim();
++    const primary = document.getElementById("brand-color-primary").value;
++    const secondary = document.getElementById("brand-color-secondary").value;
++    const fallback = document.getElementById("brand-crest-fallback-hint").dataset.fallback || "?";
++    preview.textContent = (label || fallback).slice(0, 5);
++    preview.style.background = hexToGradient(primary, secondary);
++  }
++
++  function updateHeroThumb() {
++    const url = document.getElementById("brand-hero-photo-url").value.trim();
++    const thumb = document.getElementById("brand-hero-thumb");
++    if (url) {
++      thumb.src = url;
++      thumb.style.display = "block";
++    } else {
++      thumb.removeAttribute("src");
++      thumb.style.display = "none";
++    }
++  }
++
++  function loadBrandingForm(program) {
++    const fallback = crestFallbackInitials(program || {});
++    document.getElementById("brand-crest-fallback-hint").dataset.fallback = fallback;
++    document.getElementById("brand-crest-fallback-hint").textContent = `Leave blank to auto-use "${fallback}" (derived from the program name).`;
++    document.getElementById("brand-crest-label").value = program?.crest_label || "";
++    document.getElementById("brand-color-primary").value = /^#[0-9a-f]{6}$/i.test(program?.color_primary || "") ? program.color_primary : "#f0b429";
++    document.getElementById("brand-color-secondary").value = /^#[0-9a-f]{6}$/i.test(program?.color_secondary || "") ? program.color_secondary : "#8a6a10";
++    document.getElementById("brand-coach-name").value = program?.coach_name || "";
++    document.getElementById("brand-coach-name-public").checked = !!program?.coach_name_public;
++    document.getElementById("brand-hero-photo-url").value = program?.hero_photo_url || "";
++    document.getElementById("brand-photo-credit-label").value = program?.photo_credit_label || "";
++    document.getElementById("brand-photo-credit-url").value = program?.photo_credit_url || "";
++    document.getElementById("commons-query").value = program?.name || "";
++    document.getElementById("commons-results").innerHTML = "";
++    document.getElementById("commons-status").textContent = "";
++    updateCrestPreview();
++    updateHeroThumb();
++    const saveStatus = document.getElementById("brand-save-status");
++    saveStatus.classList.remove("show");
++  }
++
++  ["brand-crest-label", "brand-color-primary", "brand-color-secondary"].forEach((id) => {
++    document.getElementById(id).addEventListener("input", updateCrestPreview);
++  });
++  document.getElementById("brand-hero-photo-url").addEventListener("input", updateHeroThumb);
++
++  document.getElementById("brand-save-btn").addEventListener("click", async () => {
++    if (!currentProgramId) return;
++    const btn = document.getElementById("brand-save-btn");
++    const status = document.getElementById("brand-save-status");
++    btn.disabled = true;
++    btn.textContent = "Saving...";
++
++    const update = {
++      crest_label: document.getElementById("brand-crest-label").value.trim() || null,
++      color_primary: document.getElementById("brand-color-primary").value || null,
++      color_secondary: document.getElementById("brand-color-secondary").value || null,
++      coach_name: document.getElementById("brand-coach-name").value.trim() || null,
++      coach_name_public: document.getElementById("brand-coach-name-public").checked,
++      hero_photo_url: document.getElementById("brand-hero-photo-url").value.trim() || null,
++      photo_credit_label: document.getElementById("brand-photo-credit-label").value.trim() || null,
++      photo_credit_url: document.getElementById("brand-photo-credit-url").value.trim() || null,
++    };
++
++    const { error } = await supabase.from("programs").update(update).eq("id", currentProgramId);
++
++    btn.disabled = false;
++    btn.textContent = "Save branding";
++
++    if (error) {
++      alert("Couldn't save branding: " + error.message);
++      return;
++    }
++
++    // Keep the in-memory programs array in sync so switching away and back
++    // (or the watermark, which reads from this same array) reflects the
++    // save immediately without a full reload.
++    const program = programs.find((p) => p.id === currentProgramId);
++    if (program) Object.assign(program, update);
++    renderWatermark(program || {});
++
++    status.textContent = "Saved";
++    status.classList.add("show");
++    setTimeout(() => status.classList.remove("show"), 1800);
++  });
++
++  document.getElementById("commons-search-btn").addEventListener("click", async () => {
++    const query = document.getElementById("commons-query").value.trim();
++    const status = document.getElementById("commons-status");
++    const results = document.getElementById("commons-results");
++    results.innerHTML = "";
++    if (!query) {
++      status.textContent = "Type something to search for first.";
++      return;
++    }
++    const btn = document.getElementById("commons-search-btn");
++    btn.disabled = true;
++    status.textContent = "Searching Wikimedia Commons...";
++
++    try {
++      const res = await fetch(`/api/search-commons-photo?query=${encodeURIComponent(query)}`);
++      const data = await res.json();
++      btn.disabled = false;
++      if (!res.ok) {
++        status.textContent = "Search failed: " + (data.error || res.statusText);
++        return;
++      }
++      const items = data.results || [];
++      if (!items.length) {
++        status.textContent = "No results found. Try a different search term.";
++        return;
++      }
++      status.textContent = `${items.length} result${items.length === 1 ? "" : "s"} -- click one to fill in the fields below (nothing saves until you click "Save branding").`;
++      items.forEach((item) => {
++        const div = document.createElement("div");
++        div.className = "commons-result";
++        div.title = item.title;
++        div.innerHTML = `<img src="${item.thumbnailUrl}" alt="${item.title.replace(/"/g, "&quot;")}" loading="lazy" />`;
++        div.addEventListener("click", () => {
++          document.getElementById("brand-hero-photo-url").value = item.fullUrl;
++          const creditParts = [];
++          if (item.artist) creditParts.push(item.artist);
++          if (item.licenseShortName) creditParts.push(item.licenseShortName);
++          document.getElementById("brand-photo-credit-label").value = creditParts.length
++            ? `Photo: ${creditParts.join(", ")}`
++            : "Photo: Wikimedia Commons";
++          document.getElementById("brand-photo-credit-url").value = item.filePageUrl || "";
++          updateHeroThumb();
++          status.textContent = `Selected "${item.title}" -- remember to click "Save branding" to keep it.`;
++        });
++        results.appendChild(div);
++      });
++    } catch (err) {
++      btn.disabled = false;
++      status.textContent = "Search failed: " + err.message;
++    }
++  });
++
+   async function loadPlays(programId) {
+     const { data, error } = await supabase
+       .from("plays")
