@@ -312,7 +312,7 @@
         </div>
       </div>
       <table id="plays-table">
-        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th></tr></thead>
+        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
       <div id="plays-empty" style="display:none; color:var(--muted); font-size:13px; padding-top:8px;">No plays yet for this program.</div>
@@ -392,6 +392,8 @@
   let programs = [];
   let currentProgramId = null;
   let currentProgramSlug = null;
+  let currentUserId = null;
+  let currentUserCanPublish = false;
 
   // Known short-form marks for programs whose real initials wouldn't read
   // cleanly (e.g. "deMatha" -> "DM" reads better than "D"). Anything not
@@ -486,6 +488,15 @@
   async function loadProgramDetail(programId) {
     const program = programs.find((p) => p.id === programId);
     loadBrandingForm(program);
+
+    const { data: coachRow } = await supabase
+      .from("program_coaches")
+      .select("can_publish")
+      .eq("program_id", programId)
+      .eq("coach_id", currentUserId)
+      .maybeSingle();
+    currentUserCanPublish = !!(coachRow && coachRow.can_publish);
+
     await Promise.all([loadPlays(programId), loadMembers(programId)]);
   }
 
@@ -649,7 +660,7 @@
   async function loadPlays(programId) {
     const { data, error } = await supabase
       .from("plays")
-      .select("title, play_type, status, updated_at")
+      .select("id, title, play_type, status, updated_at")
       .eq("program_id", programId)
       .order("updated_at", { ascending: false });
 
@@ -663,14 +674,43 @@
     empty.style.display = "none";
     for (const play of data) {
       const tr = document.createElement("tr");
+      const isPendingReview = play.status === "in_review";
+      const statusLabel = isPendingReview ? "Pending review" : play.status;
+      // Anyone can see a play is pending review; only a coach with
+      // publish access on this program gets the button to act on it.
+      // (The database enforces this too -- via the can_publish trigger on
+      // plays -- this is just so a graduate assistant, say, doesn't see a
+      // button that would only fail for them.)
+      const actionCell = isPendingReview && currentUserCanPublish
+        ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
+        : "";
       tr.innerHTML = `
         <td>${play.title}</td>
         <td>${play.play_type || "—"}</td>
-        <td>${play.status}</td>
+        <td>${statusLabel}</td>
         <td>${new Date(play.updated_at).toLocaleDateString()}</td>
+        <td>${actionCell}</td>
       `;
       tbody.appendChild(tr);
     }
+
+    tbody.querySelectorAll(".approve-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Publishing...";
+        const { error: publishErr } = await supabase
+          .from("plays")
+          .update({ status: "published" })
+          .eq("id", btn.dataset.playId);
+        if (publishErr) {
+          alert("Couldn't publish: " + publishErr.message);
+          btn.disabled = false;
+          btn.textContent = "Approve & publish";
+          return;
+        }
+        await loadPlays(programId);
+      });
+    });
   }
 
   async function loadMembers(programId) {
@@ -965,6 +1005,7 @@
   (async () => {
     const session = await requireSession();
     if (!session) return;
+    currentUserId = session.user.id;
     await loadPrograms();
   })();
 </script>
