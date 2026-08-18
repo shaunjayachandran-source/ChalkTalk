@@ -145,6 +145,19 @@ export default async function handler(req, res) {
 
   const slug = slugify(brief.playName || "untitled-play");
 
+  // Staff-submission gate: only a coach with can_publish=true on this
+  // program gets their build published immediately. Everyone else's build
+  // lands as 'in_review' -- visible to the whole coaching staff on the
+  // dashboard, but not on the public team page (play_directory only
+  // exposes status='published') -- until a publisher approves it.
+  const { data: coachRow } = await supabase
+    .from("program_coaches")
+    .select("can_publish")
+    .eq("program_id", programId)
+    .eq("coach_id", user.id)
+    .maybeSingle();
+  const initialStatus = coachRow && coachRow.can_publish ? "published" : "in_review";
+
   // Everything in this handler has to finish inside Vercel's 60s function
   // limit. The per-phase Claude calls (below) are the slow part and already
   // run in parallel with each other; the plays-row write doesn't depend on
@@ -174,7 +187,7 @@ export default async function handler(req, res) {
             sub_category: resolvedSubCategory,
             phase_count: brief.phases.length,
             court_type: brief.courtType || "half",
-            status: "published",
+            status: initialStatus,
             created_by: user.id,
             updated_at: new Date().toISOString(),
           },
@@ -220,7 +233,7 @@ export default async function handler(req, res) {
     console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
   }
 
-  return sendJson(res, { url: blobResult.url });
+  return sendJson(res, { url: blobResult.url, status: initialStatus });
 }
 
 async function generatePhaseContent(phase, brief, isFinalPhase) {
