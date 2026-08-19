@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — My Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="/css/chalk-team.css" />
+<style>
+  /* A handful of small additions specific to this page -- everything else
+     (crest, hero, colors, card grid) reuses chalk-team.css as-is. */
+  .welcome-line {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gray, #8a99ac);
+    margin-top: 10px;
+  }
+  .welcome-line b { color: var(--gold, #f0b429); }
+  .role-pill {
+    display: inline-block;
+    background: rgba(240,180,41,.12);
+    color: #f0b429;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    letter-spacing: .5px;
+  }
+  #invalid-link {
+    display: none;
+    max-width: 480px;
+    margin: 80px auto;
+    text-align: center;
+    padding: 0 24px;
+  }
+  #invalid-link h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  #invalid-link p {
+    font-family: 'DM Sans', sans-serif;
+    color: var(--gray, #8a99ac);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .real-link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .real-play-card {
+    display: block;
+    background: var(--panel, #121820);
+    border: 1px solid var(--border, #1e2a3a);
+    border-radius: 6px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s;
+  }
+  .real-play-card:hover { border-color: var(--gold, #f0b429); }
+  .real-play-card .rp-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: .5px;
+    color: var(--white, #f2ede4);
+  }
+  .real-play-card .rp-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--gray, #8a99ac);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .category-heading {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: var(--white, #f2ede4);
+    margin: 28px 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading your playbook...</div>
+
+<div id="invalid-link">
+  <h2>Link Not Valid</h2>
+  <p id="invalid-message"></p>
+</div>
+
+<div id="page" style="display:none;">
+  <div class="hero" id="hero">
+    <div class="hero-tex"></div>
+    <div class="hero-fade"></div>
+    <div class="hero-inner">
+      <div class="crest" id="crest"></div>
+      <div class="team-name" id="team-name"></div>
+      <div class="welcome-line" id="welcome-line"></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="box" id="status-note">
+      <span class="tag2">Your Playbook</span>
+      <span id="status-note-text"></span>
+    </div>
+  </div>
+
+  <div id="plays-by-category" style="max-width:1040px; margin:0 auto; padding:0 20px 60px;"></div>
+
+  <footer>
+    <div class="mark"><b>CHALK</b>TALK</div>
+    <div class="tagline" id="footer-tagline"></div>
+  </footer>
+</div>
+
+<script src="/js/chalk-team-common.js"></script>
+<script type="module">
+  const CT = window.ChalkTeam;
+
+  const ROLE_LABELS = {
+    head_coach: "Head Coach",
+    assistant_coach: "Assistant Coach",
+    graduate_assistant: "Graduate Assistant",
+    dbo: "DBO",
+    athlete: "Athlete",
+    parent: "Parent",
+  };
+
+  function showInvalid(message) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("invalid-message").textContent = message;
+    document.getElementById("invalid-link").style.display = "block";
+  }
+
+  async function init() {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (!token) {
+      showInvalid("No access link token was found in this URL. Ask your coach for your personal link.");
+      return;
+    }
+
+    let data;
+    try {
+      const res = await fetch(`/api/team-access?token=${encodeURIComponent(token)}`);
+      data = await res.json();
+    } catch (err) {
+      showInvalid("Couldn't reach the server. Check your connection and try again.");
+      return;
+    }
+
+    if (!data || !data.ok) {
+      showInvalid((data && data.error) || "This link isn't valid. Ask your coach for a new one.");
+      return;
+    }
+
+    const { program, plays, role, memberName } = data;
+
+    CT.applyAccent(program);
+    document.title = `My Playbook — ${program.name} — ChalkTalk`;
+    CT.renderCrest(document.getElementById("crest"), program);
+    document.getElementById("team-name").textContent = program.name.toUpperCase();
+
+    const roleLabel = ROLE_LABELS[role] || role;
+    document.getElementById("welcome-line").innerHTML = memberName
+      ? `Welcome, <b>${CT.escapeHtml(memberName)}</b> &middot; <span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`
+      : `<span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`;
+
+    document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+
+    const totalPlays = plays.length;
+    document.getElementById("status-note-text").textContent = totalPlays
+      ? `${totalPlays} play${totalPlays === 1 ? "" : "s"} published so far. Tap any play to open its full diagrams and coaching notes.`
+      : "No plays have been published yet. Check back once your coaching staff builds and publishes one.";
+
+    const container = document.getElementById("plays-by-category");
+    if (!totalPlays) {
+      container.innerHTML = `<p style="color:var(--gray,#8a99ac); font-family:'DM Sans',sans-serif; padding:20px 0;">Nothing published yet for this program.</p>`;
+    } else {
+      CT.CATEGORIES.forEach((cat) => {
+        const catPlays = plays.filter((p) => p.play_type === cat.key);
+        if (!catPlays.length) return;
+        const heading = document.createElement("div");
+        heading.className = "category-heading";
+        heading.textContent = cat.label;
+        container.appendChild(heading);
+
+        const grid = document.createElement("div");
+        grid.className = "real-link-grid";
+        catPlays.forEach((p) => {
+          const a = document.createElement("a");
+          a.className = "real-play-card";
+          a.href = p.storage_url || "#";
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.innerHTML = `
+            <div class="rp-title">${CT.escapeHtml(p.title)}</div>
+            <div class="rp-meta">${p.phase_count || "?"} phases &middot; ${CT.escapeHtml(p.court_type || "half")} court</div>
+          `;
+          grid.appendChild(a);
+        });
+        container.appendChild(grid);
+      });
+    }
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("page").style.display = "block";
+  }
+
+  init();
+</script>
+</body>
+</html>

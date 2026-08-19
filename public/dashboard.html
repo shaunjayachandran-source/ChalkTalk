@@ -807,10 +807,11 @@
   function showTokenReveal(entries) {
     const reveal = document.getElementById("token-reveal");
     reveal.style.display = "block";
+    const base = window.location.origin;
     reveal.innerHTML = `
-      <strong>Copy ${entries.length > 1 ? "these tokens" : "this token"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
-      ${entries.length > 1 ? "These links aren't" : "This link isn't"} wired into the live site yet (that's a later build step), but the record${entries.length > 1 ? "s are" : " is"} saved:<br/>
-      ${entries.map((e) => `<code>${e.name}: ${e.token}</code>`).join("<br/>")}
+      <strong>Copy and send ${entries.length > 1 ? "these links" : "this link"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
+      Send each person their own link below — it's what gets them into their real playbook.<br/>
+      ${entries.map((e) => `<code>${e.name}: ${base}/my-playbook.html?token=${e.token}</code>`).join("<br/>")}
     `;
   }
 
