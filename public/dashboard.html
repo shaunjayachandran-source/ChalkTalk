@@ -344,6 +344,30 @@
 
       <div id="token-reveal"></div>
     </div>
+
+    <div class="card">
+      <h2>Coaches</h2>
+      <div class="sub">Real dashboard logins with write access to this program -- separate from the team-member links above, which are read-only.</div>
+      <table id="coaches-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Can publish</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="add-form" id="invite-coach-form" style="display:none;">
+        <input type="text" id="new-coach-email" placeholder="Email" />
+        <select id="new-coach-role">
+          <option value="assistant_coach">Assistant Coach</option>
+          <option value="graduate_assistant">Graduate Assistant</option>
+          <option value="dbo">DBO</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+          <input type="checkbox" id="new-coach-can-publish" style="width:auto;" /> Can publish
+        </label>
+        <button class="action" id="invite-coach-btn">Invite coach</button>
+      </div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">Only the head coach can invite other coaches. This sends a real Supabase account invite by email -- they'll set their own password and get a dashboard login.</div>
+      <div id="invite-coach-status"></div>
+    </div>
   </div>
 </main>
 
@@ -394,6 +418,7 @@
   let currentProgramSlug = null;
   let currentUserId = null;
   let currentUserCanPublish = false;
+  let currentUserRole = null;
 
   // Known short-form marks for programs whose real initials wouldn't read
   // cleanly (e.g. "deMatha" -> "DM" reads better than "D"). Anything not
@@ -491,13 +516,17 @@
 
     const { data: coachRow } = await supabase
       .from("program_coaches")
-      .select("can_publish")
+      .select("role, can_publish")
       .eq("program_id", programId)
       .eq("coach_id", currentUserId)
       .maybeSingle();
     currentUserCanPublish = !!(coachRow && coachRow.can_publish);
+    currentUserRole = coachRow ? coachRow.role : null;
 
-    await Promise.all([loadPlays(programId), loadMembers(programId)]);
+    const inviteForm = document.getElementById("invite-coach-form");
+    if (inviteForm) inviteForm.style.display = currentUserRole === "head_coach" ? "flex" : "none";
+
+    await Promise.all([loadPlays(programId), loadMembers(programId), loadCoaches(programId)]);
   }
 
   // ---- Program Branding card ----
@@ -770,6 +799,86 @@
       });
     });
   }
+
+  const COACH_ROLE_LABELS = {
+    head_coach: "Head Coach",
+    assistant_coach: "Assistant Coach",
+    graduate_assistant: "Graduate Assistant",
+    dbo: "DBO",
+  };
+
+  async function loadCoaches(programId) {
+    const { data: rows, error } = await supabase
+      .from("program_coaches")
+      .select("coach_id, role, can_publish, coaches ( email, display_name )")
+      .eq("program_id", programId)
+      .order("role");
+
+    const tbody = document.querySelector("#coaches-table tbody");
+    tbody.innerHTML = "";
+    if (error || !rows) return;
+
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      const name = row.coaches?.display_name || "&mdash;";
+      const email = row.coaches?.email || "&mdash;";
+      tr.innerHTML = `
+        <td>${name}</td>
+        <td>${email}</td>
+        <td><span class="pill">${COACH_ROLE_LABELS[row.role] || row.role}</span></td>
+        <td>${row.can_publish ? "Yes" : "No"}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  document.getElementById("invite-coach-btn")?.addEventListener("click", async () => {
+    const emailInput = document.getElementById("new-coach-email");
+    const roleSelect = document.getElementById("new-coach-role");
+    const canPublishCheckbox = document.getElementById("new-coach-can-publish");
+    const statusEl = document.getElementById("invite-coach-status");
+    const email = emailInput.value.trim();
+    if (!email || !currentProgramId) return;
+
+    const btn = document.getElementById("invite-coach-btn");
+    btn.disabled = true;
+    btn.textContent = "Inviting...";
+    statusEl.textContent = "";
+
+    const { data: { session } } = await supabase.auth.getSession();
+    let result;
+    try {
+      const res = await fetch("/api/invite-coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          programId: currentProgramId,
+          email,
+          role: roleSelect.value,
+          canPublish: canPublishCheckbox.checked,
+        }),
+      });
+      result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Invite failed");
+    } catch (err) {
+      statusEl.className = "error";
+      statusEl.textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Invite coach";
+      return;
+    }
+
+    statusEl.className = "";
+    statusEl.textContent = `Invited ${email}. They'll get a real Supabase login email to set their password.`;
+    emailInput.value = "";
+    canPublishCheckbox.checked = false;
+    btn.disabled = false;
+    btn.textContent = "Invite coach";
+    await loadCoaches(currentProgramId);
+  });
 
   // Shared by the one-at-a-time "Add team member" button and the CSV bulk
   // upload -- inserts the team_members row, generates+hashes a token, and

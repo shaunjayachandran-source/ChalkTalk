@@ -1,0 +1,361 @@
+--- a/public/dashboard.html
++++ b/public/dashboard.html
+@@ -807,10 +807,11 @@
+   function showTokenReveal(entries) {
+     const reveal = document.getElementById("token-reveal");
+     reveal.style.display = "block";
++    const base = window.location.origin;
+     reveal.innerHTML = `
+-      <strong>Copy ${entries.length > 1 ? "these tokens" : "this token"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
+-      ${entries.length > 1 ? "These links aren't" : "This link isn't"} wired into the live site yet (that's a later build step), but the record${entries.length > 1 ? "s are" : " is"} saved:<br/>
+-      ${entries.map((e) => `<code>${e.name}: ${e.token}</code>`).join("<br/>")}
++      <strong>Copy and send ${entries.length > 1 ? "these links" : "this link"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
++      Send each person their own link below — it's what gets them into their real playbook.<br/>
++      ${entries.map((e) => `<code>${e.name}: ${base}/my-playbook.html?token=${e.token}</code>`).join("<br/>")}
+     `;
+   }
+ 
+diff --git a/api/team-access.js b/api/team-access.js
+new file mode 100644
+index 0000000..11eb213
+--- /dev/null
++++ b/api/team-access.js
+@@ -0,0 +1,111 @@
++/**
++ * GET /api/team-access?token=<token>
++ *
++ * The real reader-side of the access_links system. A player/parent/coach
++ * opens their personal link (my-playbook.html?token=...), that page calls
++ * this endpoint, and this is the only thing in the app that turns a raw
++ * token into actual content.
++ *
++ * Uses the service-role key deliberately: an anonymous visitor has no
++ * Supabase session at all, so the anon/publishable key (which is RLS-scoped
++ * to a logged-in coach's own programs) can't read access_links, plays, or
++ * programs for this request no matter what. This endpoint is the one place
++ * that's allowed to bypass RLS, and it does so narrowly -- it only ever
++ * reads the one program a valid token actually points to.
++ *
++ * On success: returns that program's public branding fields, the team
++ * member's name/role, and every currently-published play for that program
++ * -- including the real storage_url. This is the one place in the whole
++ * app that hands that out to someone who isn't a logged-in coach.
++ *
++ * On any failure (missing token, not found, revoked, expired): the exact
++ * same generic { ok:false } response -- deliberately not distinguishing
++ * *why* it failed, so a wrong guess can't be used to fish for which
++ * failure mode applies.
++ */
++
++import { createClient } from "@supabase/supabase-js";
++
++const SUPABASE_URL = "https://dvilirimxnkaghqyoueh.supabase.co";
++
++const GENERIC_FAILURE = "This link isn't valid, has been revoked, or has expired. Ask your coach for a new one.";
++
++function getServiceClient() {
++  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
++  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
++  return createClient(SUPABASE_URL, key);
++}
++
++async function sha256Hex(text) {
++  const data = new TextEncoder().encode(text);
++  const digest = await crypto.subtle.digest("SHA-256", data);
++  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
++}
++
++function fail(res) {
++  return res.status(200).json({ ok: false, error: GENERIC_FAILURE });
++}
++
++export default async function handler(req, res) {
++  const token = typeof req.query.token === "string" ? req.query.token.trim() : "";
++  if (!token) return fail(res);
++
++  let supabase;
++  try {
++    supabase = getServiceClient();
++  } catch (err) {
++    console.error("[team-access]", err.message);
++    return res.status(500).json({ ok: false, error: "Server misconfiguration." });
++  }
++
++  const tokenHash = await sha256Hex(token);
++
++  const { data: link, error: linkErr } = await supabase
++    .from("access_links")
++    .select("id, program_id, team_member_id, role, revoked_at, expires_at")
++    .eq("token_hash", tokenHash)
++    .maybeSingle();
++
++  if (linkErr || !link) return fail(res);
++  if (link.revoked_at) return fail(res);
++  if (link.expires_at && new Date(link.expires_at) <= new Date()) return fail(res);
++
++  const [{ data: program }, { data: teamMember }, { data: plays }] = await Promise.all([
++    supabase
++      .from("programs")
++      .select(
++        "name, level, crest_label, crest_font, crest_image_url, crest_svg, color_primary, color_secondary, league_label, venue_label, location_label"
++      )
++      .eq("id", link.program_id)
++      .maybeSingle(),
++    link.team_member_id
++      ? supabase.from("team_members").select("name, role").eq("id", link.team_member_id).maybeSingle()
++      : Promise.resolve({ data: null }),
++    supabase
++      .from("plays")
++      .select("title, play_type, sub_category, phase_count, court_type, storage_url, updated_at")
++      .eq("program_id", link.program_id)
++      .eq("status", "published")
++      .order("updated_at", { ascending: false }),
++  ]);
++
++  if (!program) return fail(res);
++
++  // Best-effort -- a failed last_used_at write shouldn't block someone
++  // from seeing their own playbook.
++  supabase
++    .from("access_links")
++    .update({ last_used_at: new Date().toISOString() })
++    .eq("id", link.id)
++    .then(({ error }) => {
++      if (error) console.error("[team-access] failed to update last_used_at:", error.message);
++    });
++
++  return res.status(200).json({
++    ok: true,
++    role: link.role,
++    memberName: teamMember?.name || null,
++    program,
++    plays: plays || [],
++  });
++}
+diff --git a/public/my-playbook.html b/public/my-playbook.html
+new file mode 100644
+index 0000000..241bc3e
+--- /dev/null
++++ b/public/my-playbook.html
+@@ -0,0 +1,221 @@
++<!doctype html>
++<html lang="en">
++<head>
++<meta charset="utf-8" />
++<meta name="viewport" content="width=device-width, initial-scale=1" />
++<title>ChalkTalk — My Playbook</title>
++<link rel="preconnect" href="https://fonts.googleapis.com" />
++<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++<link rel="stylesheet" href="/css/chalk-team.css" />
++<style>
++  /* A handful of small additions specific to this page -- everything else
++     (crest, hero, colors, card grid) reuses chalk-team.css as-is. */
++  .welcome-line {
++    font-family: 'DM Mono', monospace;
++    font-size: 12px;
++    letter-spacing: 1px;
++    text-transform: uppercase;
++    color: var(--gray, #8a99ac);
++    margin-top: 10px;
++  }
++  .welcome-line b { color: var(--gold, #f0b429); }
++  .role-pill {
++    display: inline-block;
++    background: rgba(240,180,41,.12);
++    color: #f0b429;
++    padding: 2px 10px;
++    border-radius: 100px;
++    font-size: 11px;
++    letter-spacing: .5px;
++  }
++  #invalid-link {
++    display: none;
++    max-width: 480px;
++    margin: 80px auto;
++    text-align: center;
++    padding: 0 24px;
++  }
++  #invalid-link h2 {
++    font-family: 'Bebas Neue', sans-serif;
++    font-size: 26px;
++    letter-spacing: 1px;
++    margin-bottom: 12px;
++  }
++  #invalid-link p {
++    font-family: 'DM Sans', sans-serif;
++    color: var(--gray, #8a99ac);
++    font-size: 14px;
++    line-height: 1.5;
++  }
++  .real-link-grid {
++    display: grid;
++    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
++    gap: 12px;
++    margin-top: 10px;
++  }
++  .real-play-card {
++    display: block;
++    background: var(--panel, #121820);
++    border: 1px solid var(--border, #1e2a3a);
++    border-radius: 6px;
++    padding: 16px 18px;
++    text-decoration: none;
++    color: inherit;
++    transition: border-color .15s;
++  }
++  .real-play-card:hover { border-color: var(--gold, #f0b429); }
++  .real-play-card .rp-title {
++    font-family: 'Bebas Neue', sans-serif;
++    font-size: 18px;
++    letter-spacing: .5px;
++    color: var(--white, #f2ede4);
++  }
++  .real-play-card .rp-meta {
++    font-family: 'DM Mono', monospace;
++    font-size: 11px;
++    color: var(--gray, #8a99ac);
++    margin-top: 4px;
++    text-transform: uppercase;
++    letter-spacing: .5px;
++  }
++  .category-heading {
++    font-family: 'Bebas Neue', sans-serif;
++    font-size: 20px;
++    letter-spacing: 1px;
++    color: var(--white, #f2ede4);
++    margin: 28px 0 4px;
++  }
++</style>
++</head>
++<body>
++
++<div id="loading">Loading your playbook...</div>
++
++<div id="invalid-link">
++  <h2>Link Not Valid</h2>
++  <p id="invalid-message"></p>
++</div>
++
++<div id="page" style="display:none;">
++  <div class="hero" id="hero">
++    <div class="hero-tex"></div>
++    <div class="hero-fade"></div>
++    <div class="hero-inner">
++      <div class="crest" id="crest"></div>
++      <div class="team-name" id="team-name"></div>
++      <div class="welcome-line" id="welcome-line"></div>
++    </div>
++  </div>
++
++  <div class="notes">
++    <div class="box" id="status-note">
++      <span class="tag2">Your Playbook</span>
++      <span id="status-note-text"></span>
++    </div>
++  </div>
++
++  <div id="plays-by-category" style="max-width:1040px; margin:0 auto; padding:0 20px 60px;"></div>
++
++  <footer>
++    <div class="mark"><b>CHALK</b>TALK</div>
++    <div class="tagline" id="footer-tagline"></div>
++  </footer>
++</div>
++
++<script src="/js/chalk-team-common.js"></script>
++<script type="module">
++  const CT = window.ChalkTeam;
++
++  const ROLE_LABELS = {
++    head_coach: "Head Coach",
++    assistant_coach: "Assistant Coach",
++    graduate_assistant: "Graduate Assistant",
++    dbo: "DBO",
++    athlete: "Athlete",
++    parent: "Parent",
++  };
++
++  function showInvalid(message) {
++    document.getElementById("loading").style.display = "none";
++    document.getElementById("invalid-message").textContent = message;
++    document.getElementById("invalid-link").style.display = "block";
++  }
++
++  async function init() {
++    const token = new URLSearchParams(window.location.search).get("token");
++    if (!token) {
++      showInvalid("No access link token was found in this URL. Ask your coach for your personal link.");
++      return;
++    }
++
++    let data;
++    try {
++      const res = await fetch(`/api/team-access?token=${encodeURIComponent(token)}`);
++      data = await res.json();
++    } catch (err) {
++      showInvalid("Couldn't reach the server. Check your connection and try again.");
++      return;
++    }
++
++    if (!data || !data.ok) {
++      showInvalid((data && data.error) || "This link isn't valid. Ask your coach for a new one.");
++      return;
++    }
++
++    const { program, plays, role, memberName } = data;
++
++    CT.applyAccent(program);
++    document.title = `My Playbook — ${program.name} — ChalkTalk`;
++    CT.renderCrest(document.getElementById("crest"), program);
++    document.getElementById("team-name").textContent = program.name.toUpperCase();
++
++    const roleLabel = ROLE_LABELS[role] || role;
++    document.getElementById("welcome-line").innerHTML = memberName
++      ? `Welcome, <b>${CT.escapeHtml(memberName)}</b> &middot; <span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`
++      : `<span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`;
++
++    document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
++
++    const totalPlays = plays.length;
++    document.getElementById("status-note-text").textContent = totalPlays
++      ? `${totalPlays} play${totalPlays === 1 ? "" : "s"} published so far. Tap any play to open its full diagrams and coaching notes.`
++      : "No plays have been published yet. Check back once your coaching staff builds and publishes one.";
++
++    const container = document.getElementById("plays-by-category");
++    if (!totalPlays) {
++      container.innerHTML = `<p style="color:var(--gray,#8a99ac); font-family:'DM Sans',sans-serif; padding:20px 0;">Nothing published yet for this program.</p>`;
++    } else {
++      CT.CATEGORIES.forEach((cat) => {
++        const catPlays = plays.filter((p) => p.play_type === cat.key);
++        if (!catPlays.length) return;
++        const heading = document.createElement("div");
++        heading.className = "category-heading";
++        heading.textContent = cat.label;
++        container.appendChild(heading);
++
++        const grid = document.createElement("div");
++        grid.className = "real-link-grid";
++        catPlays.forEach((p) => {
++          const a = document.createElement("a");
++          a.className = "real-play-card";
++          a.href = p.storage_url || "#";
++          a.target = "_blank";
++          a.rel = "noopener";
++          a.innerHTML = `
++            <div class="rp-title">${CT.escapeHtml(p.title)}</div>
++            <div class="rp-meta">${p.phase_count || "?"} phases &middot; ${CT.escapeHtml(p.court_type || "half")} court</div>
++          `;
++          grid.appendChild(a);
++        });
++        container.appendChild(grid);
++      });
++    }
++
++    document.getElementById("loading").style.display = "none";
++    document.getElementById("page").style.display = "block";
++  }
++
++  init();
++</script>
++</body>
++</html>

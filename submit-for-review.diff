@@ -1,0 +1,140 @@
+--- a/public/dashboard.html
++++ b/public/dashboard.html
+@@ -312,7 +312,7 @@
+         </div>
+       </div>
+       <table id="plays-table">
+-        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th></tr></thead>
++        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+         <tbody></tbody>
+       </table>
+       <div id="plays-empty" style="display:none; color:var(--muted); font-size:13px; padding-top:8px;">No plays yet for this program.</div>
+@@ -392,6 +392,8 @@
+   let programs = [];
+   let currentProgramId = null;
+   let currentProgramSlug = null;
++  let currentUserId = null;
++  let currentUserCanPublish = false;
+ 
+   // Known short-form marks for programs whose real initials wouldn't read
+   // cleanly (e.g. "deMatha" -> "DM" reads better than "D"). Anything not
+@@ -486,6 +488,15 @@
+   async function loadProgramDetail(programId) {
+     const program = programs.find((p) => p.id === programId);
+     loadBrandingForm(program);
++
++    const { data: coachRow } = await supabase
++      .from("program_coaches")
++      .select("can_publish")
++      .eq("program_id", programId)
++      .eq("coach_id", currentUserId)
++      .maybeSingle();
++    currentUserCanPublish = !!(coachRow && coachRow.can_publish);
++
+     await Promise.all([loadPlays(programId), loadMembers(programId)]);
+   }
+ 
+@@ -649,7 +660,7 @@
+   async function loadPlays(programId) {
+     const { data, error } = await supabase
+       .from("plays")
+-      .select("title, play_type, status, updated_at")
++      .select("id, title, play_type, status, updated_at")
+       .eq("program_id", programId)
+       .order("updated_at", { ascending: false });
+ 
+@@ -663,14 +674,43 @@
+     empty.style.display = "none";
+     for (const play of data) {
+       const tr = document.createElement("tr");
++      const isPendingReview = play.status === "in_review";
++      const statusLabel = isPendingReview ? "Pending review" : play.status;
++      // Anyone can see a play is pending review; only a coach with
++      // publish access on this program gets the button to act on it.
++      // (The database enforces this too -- via the can_publish trigger on
++      // plays -- this is just so a graduate assistant, say, doesn't see a
++      // button that would only fail for them.)
++      const actionCell = isPendingReview && currentUserCanPublish
++        ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
++        : "";
+       tr.innerHTML = `
+         <td>${play.title}</td>
+         <td>${play.play_type || "—"}</td>
+-        <td>${play.status}</td>
++        <td>${statusLabel}</td>
+         <td>${new Date(play.updated_at).toLocaleDateString()}</td>
++        <td>${actionCell}</td>
+       `;
+       tbody.appendChild(tr);
+     }
++
++    tbody.querySelectorAll(".approve-play-btn").forEach((btn) => {
++      btn.addEventListener("click", async () => {
++        btn.disabled = true;
++        btn.textContent = "Publishing...";
++        const { error: publishErr } = await supabase
++          .from("plays")
++          .update({ status: "published" })
++          .eq("id", btn.dataset.playId);
++        if (publishErr) {
++          alert("Couldn't publish: " + publishErr.message);
++          btn.disabled = false;
++          btn.textContent = "Approve & publish";
++          return;
++        }
++        await loadPlays(programId);
++      });
++    });
+   }
+ 
+   async function loadMembers(programId) {
+@@ -965,6 +1005,7 @@
+   (async () => {
+     const session = await requireSession();
+     if (!session) return;
++    currentUserId = session.user.id;
+     await loadPrograms();
+   })();
+ </script>
+diff --git a/api/generate-playbook.js b/api/generate-playbook.js
+index 6ebe3af..bf06987 100644
+--- a/api/generate-playbook.js
++++ b/api/generate-playbook.js
+@@ -145,6 +145,19 @@ export default async function handler(req, res) {
+ 
+   const slug = slugify(brief.playName || "untitled-play");
+ 
++  // Staff-submission gate: only a coach with can_publish=true on this
++  // program gets their build published immediately. Everyone else's build
++  // lands as 'in_review' -- visible to the whole coaching staff on the
++  // dashboard, but not on the public team page (play_directory only
++  // exposes status='published') -- until a publisher approves it.
++  const { data: coachRow } = await supabase
++    .from("program_coaches")
++    .select("can_publish")
++    .eq("program_id", programId)
++    .eq("coach_id", user.id)
++    .maybeSingle();
++  const initialStatus = coachRow && coachRow.can_publish ? "published" : "in_review";
++
+   // Everything in this handler has to finish inside Vercel's 60s function
+   // limit. The per-phase Claude calls (below) are the slow part and already
+   // run in parallel with each other; the plays-row write doesn't depend on
+@@ -174,7 +187,7 @@ export default async function handler(req, res) {
+             sub_category: resolvedSubCategory,
+             phase_count: brief.phases.length,
+             court_type: brief.courtType || "half",
+-            status: "published",
++            status: initialStatus,
+             created_by: user.id,
+             updated_at: new Date().toISOString(),
+           },
+@@ -220,7 +233,7 @@ export default async function handler(req, res) {
+     console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
+   }
+ 
+-  return sendJson(res, { url: blobResult.url });
++  return sendJson(res, { url: blobResult.url, status: initialStatus });
+ }
+ 
+ async function generatePhaseContent(phase, brief, isFinalPhase) {
