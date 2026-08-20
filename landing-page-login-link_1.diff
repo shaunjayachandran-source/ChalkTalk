@@ -1,0 +1,16 @@
+diff --git a/public/index.html b/public/index.html
+index 942545f..b118bfa 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -295,7 +295,10 @@
+ 
+ <div class="topbar">
+   <div class="mark"><span class="tri">▲</span> <strong>ChalkTalk</strong></div>
+-  <span class="beta">Closed Beta — Invite Only</span>
++  <div style="display:flex; align-items:center; gap:12px;">
++    <span class="beta">Closed Beta — Invite Only</span>
++    <a href="/login.html" style="font-family:'DM Mono',monospace; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gray-2); text-decoration:none; border:1px solid var(--border-2); padding:6px 12px; border-radius:2px;">Log In</a>
++  </div>
+ </div>
+ 
+ <!-- ─────────── HERO ─────────── -->
