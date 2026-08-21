@@ -143,11 +143,11 @@
         },
         {
           "playerId": "p5",
-          "cx": 300,
-          "cy": 220,
+          "cx": 335,
+          "cy": 268,
           "hasBall": false,
-          "tooltipShort": "5 - BIG (Screener, climbing)",
-          "tooltipFull": "5 starts near the level of the top of the key on the ball side and climbs up to meet 1, squaring up to set the ball screen."
+          "tooltipShort": "5 - BIG (Screener, starting near the strong-side elbow)",
+          "tooltipFull": "5 starts down near the strong-side elbow, well below and away from 1 - not yet in screening position. The climb up to meet 1 is Phase 1's actual action, ending where 5 sets the screen in Phase 2."
         },
         {
           "playerId": "p2",
@@ -174,11 +174,21 @@
           "tooltipFull": "4 holds at the weak-side elbow, available for a short roll or dribble handoff later in the possession."
         }
       ],
-      "actions": [],
+      "actions": [
+        {
+          "id": "a1-climb",
+          "type": "cut",
+          "playerId": "p5",
+          "path": "M335,268 Q318,242 300,220",
+          "endpoint": { "cx": 300, "cy": 220 },
+          "colorKey": "ar",
+          "note": "5's actual Phase 1 action: climbing from the strong-side elbow up to the screen-ready spot just above the key. This is drawn as a solid primary cut (no ball) so Phase 1 visibly shows 5 still moving into position, not already standing there - the endpoint (300,220) is where 5 arrives, and per the continuity rule that endpoint becomes Phase 2's starting position for 5."
+        }
+      ],
       "coachingPoints": [
         {
           "n": 1,
-          "text": "5 does not set the screen early - {{p5}} climbs to meet 1 only once 1 has the ball settled above the key. The screen itself is not drawn until Phase 2, alongside the cut it enables - a screen and the cut it serves belong in the same phase, or the diagram implies a screen just standing there with no one using it."
+          "text": "5 does not start already screening - {{p5}} climbs from the strong-side elbow to meet 1 only once 1 has the ball settled above the key. The screen itself is not drawn until Phase 2, alongside the cut it enables - a screen and the cut it serves belong in the same phase, or the diagram implies a screen just standing there with no one using it."
         },
         {
           "n": 2,
@@ -259,44 +269,54 @@
           },
           "perpendicularToActionId": "a2-dribble",
           "colorKey": "ar",
-          "note": "5 sets the ball screen just above the top of the key, same phase as the cut it enables (a2-dribble) - a screen with no drawn cut in the same phase would be a dead screen, so the two always travel together. The crossbar's angle is not stored as a raw number - it's derived at render time as perpendicular to 1's direction of travel in a2-dribble."
+          "note": "5 sets the ball screen just above the top of the key, same phase as the cut it enables (a2-dribble) - a screen with no drawn cut in the same phase would be a dead screen, so the two always travel together. The renderer draws this as a short stem off 5's body toward 1's approach, with a crossbar perpendicular to a2-dribble's `contactSegment` (the specific leg of 1's path at the exact moment 1 clears the screen, not the overall start-to-endpoint drive direction) at the far end of the stem - not a bar drawn through 5's own circle."
         },
         {
           "id": "a2-dribble",
           "type": "dribble",
           "playerId": "p1",
-          "path": "M260,205 Q300,225 340,250",
+          "from": { "cx": 260, "cy": 205 },
+          "waypoints": [
+            { "cx": 260, "cy": 205 },
+            { "cx": 298, "cy": 203 },
+            { "cx": 317, "cy": 224 },
+            { "cx": 315, "cy": 345 }
+          ],
+          "contactSegment": {
+            "from": { "cx": 298, "cy": 203 },
+            "to": { "cx": 317, "cy": 224 }
+          },
           "endpoint": {
-            "cx": 340,
-            "cy": 250
+            "cx": 315,
+            "cy": 345
           },
           "colorKey": "au",
-          "note": "1 attacks downhill off the screen toward the strong-side elbow. endpoint (340,250) is where 1 lands - NOT the same as this phase's playerPositions entry for p1, which correctly stays at (260,205), 1's position at the START of this phase (inherited from Phase 1). The two are deliberately different: playerPositions = start-of-phase, endpoint = end-of-phase, and it's the endpoint that becomes the next phase's start."
+          "note": "1 does not cut straight downhill past 5 - 1 goes UP AND AROUND the screen first (waypoint 2, brushing close over the top of 5's body), then turns perpendicular to the screen at the contact moment (waypoint 3, hugging 5's far shoulder), and continues downhill to the right block (endpoint) - correcting an earlier version of this note that had 1 curling back to the LEFT block, which was written from the wrong point of view. 5's job is to momentarily wall off 1's trailing defender - if 1 cuts straight down without going around 5's body first, the defender never has to fight through anything and the screen does nothing. `contactSegment` is the explicit from/to pair marking the exact moment 1 clears the screen - that segment, not the overall start-to-endpoint vector, is what the screen's crossbar angle is derived perpendicular to. `waypoints` drives the rendered squiggle across all three legs of the real path; `endpoint` (315,345, the right block) is what becomes Phase 3's start position if one existed, per the continuity rule - the middle waypoints are illustrative shape only, not continuity anchors."
         },
         {
           "id": "a2-roll",
           "type": "cut",
           "playerId": "p5",
-          "path": "M300,220 Q320,260 340,300",
+          "path": "M300,220 Q260,290 205,345",
           "endpoint": {
-            "cx": 340,
-            "cy": 300
+            "cx": 205,
+            "cy": 345
           },
           "colorKey": "ar",
-          "note": "5's roll to the rim if the coverage drops or switches - the primary read. endpoint (340,300) is where 5 lands; this phase's playerPositions for p5 stays at (300,220), 5's start-of-phase-2 position (same spot the screen was set at)."
+          "note": "5's roll if the coverage drops or switches - the primary read. Since 1 continues to the RIGHT block off the screen, 5's roll crosses over to the LEFT block/rim area (endpoint 205,345), the space 1's drive vacates rather than the lane 1 is now occupying - this keeps 5 and 1 from landing in the same spot. This phase's playerPositions for p5 stays at (300,220), 5's start-of-phase-2 position (same spot the screen was set at)."
         },
         {
           "id": "a2-pop-option",
           "type": "cut",
           "style": "option",
           "playerId": "p5",
-          "path": "M300,220 Q330,200 355,190",
+          "path": "M300,220 Q350,208 400,222",
           "endpoint": {
-            "cx": 355,
-            "cy": 190
+            "cx": 400,
+            "cy": 222
           },
           "colorKey": "ar",
-          "note": "5's pop to the arc if the defense hedges hard - the counter read, drawn as a lighter option line. Because this is style:\"option\" and not the primary action, its endpoint does NOT drive the next phase's ghost/starting position - only a1-roll's endpoint would, per the rule that exactly one real thing happens in the actual game."
+          "note": "5's pop out beyond the arc, above the break on the strong side, if the defense hedges hard - the counter read, drawn as a lighter option line with its own arrowhead. Because this is style:\"option\" and not the primary action, its endpoint does NOT drive the next phase's ghost/starting position - only a2-roll's endpoint would, per the rule that exactly one real thing happens in the actual game."
         }
       ],
       "coachingPoints": [
@@ -377,9 +397,10 @@ function resolvePhaseStartPositions(phaseIndex) {
 }
 
 // ---- Resolve a screen's crossbar angle: perpendicular to the direction the
-// receiving player travels. Search order per house rule: same phase first
-// (screen and its cut belong together), then next phase as a fallback for
-// the rare delayed-effect screen, then flag if nothing found.
+// receiving player is traveling AT THE MOMENT they use the screen - not the
+// net direction across their whole path. Search order per house rule: same
+// phase first (screen and its cut belong together), then next phase as a
+// fallback for the rare delayed-effect screen, then flag if nothing found.
 function resolveScreenAngle(phaseIndex, screenAction, startPositions) {
   const phase = PLAY.phases[phaseIndex];
   let linked = (phase.actions || []).find(a => a.id === screenAction.perpendicularToActionId);
@@ -395,12 +416,25 @@ function resolveScreenAngle(phaseIndex, screenAction, startPositions) {
     diagnostics.push(`SCREEN ANGLE UNRESOLVED: action "${screenAction.id}" (${screenAction.byPlayerId} screening for ${screenAction.forPlayerId}) has no linked cut in this phase or the next. Defaulting to 0deg - this should be treated as a schema error, not a silent default.`);
     return 0;
   }
-  const startPos = startPositions[linked.playerId] || screenAction.atPoint;
-  const dx = linked.endpoint.cx - startPos.cx;
-  const dy = linked.endpoint.cy - startPos.cy;
+  let dx, dy, sourceLabel;
+  if (linked.contactSegment) {
+    // Preferred: the explicit leg of the path marking the moment of contact
+    // with the screen - correct even when the cutter's path bends afterward
+    // (e.g. curling around the screen, then cutting a different direction).
+    dx = linked.contactSegment.to.cx - linked.contactSegment.from.cx;
+    dy = linked.contactSegment.to.cy - linked.contactSegment.from.cy;
+    sourceLabel = `${linked.id}'s contactSegment`;
+  } else {
+    // Fallback for simple two-point actions with no explicit contact leg:
+    // net direction from the cutter's start to their endpoint.
+    const startPos = startPositions[linked.playerId] || screenAction.atPoint;
+    dx = linked.endpoint.cx - startPos.cx;
+    dy = linked.endpoint.cy - startPos.cy;
+    sourceLabel = `${linked.id}'s overall start->endpoint (no contactSegment present)`;
+  }
   if (dx === 0 && dy === 0) return 0;
   const travelAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-  diagnostics.push(`Screen "${screenAction.id}": angle derived from ${linked.id} (${searchedWhere}), travel ${travelAngle.toFixed(1)}deg -> crossbar ${(travelAngle+90).toFixed(1)}deg`);
+  diagnostics.push(`Screen "${screenAction.id}": angle derived from ${sourceLabel} (${searchedWhere}), travel ${travelAngle.toFixed(1)}deg -> crossbar ${(travelAngle+90).toFixed(1)}deg`);
   return travelAngle + 90;
 }
 
@@ -422,6 +456,48 @@ function svgEl(tag, attrs) {
   return el;
 }
 
+const COLOR_MAP = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
+const PLAYER_RADIUS = 9;
+
+// Tight, high-frequency sinusoidal path along a polyline of waypoints - the
+// template's required rendering for an ACTIVE DRIBBLE, distinct from the
+// smooth curve used for a pass/cut. Not authored by hand: generated from the
+// real waypoints so it can't drift out of sync with where the ball actually
+// goes. Accepts 2+ points so a dribble can wrap around a screen (multiple
+// legs) rather than only ever being a straight line between two points.
+// The sine phase runs on cumulative distance travelled, not per-segment, so
+// the wiggle stays continuous across a turn instead of resetting at each leg.
+function squigglePath(points, amplitude = 4.5, waveLength = 14) {
+  if (points.length < 2) return '';
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i], p1 = points[i + 1];
+    const dx = p1.cx - p0.cx, dy = p1.cy - p0.cy;
+    const len = Math.hypot(dx, dy) || 0.001;
+    segs.push({ p0, p1, len, ux: dx / len, uy: dy / len, px: -dy / len, py: dx / len });
+    total += len;
+  }
+  const stepLen = waveLength / 6;
+  let d = '', dist = 0, first = true;
+  segs.forEach(seg => {
+    const stepsInSeg = Math.max(2, Math.round(seg.len / stepLen));
+    for (let s = (first ? 0 : 1); s <= stepsInSeg; s++) {
+      const t = s / stepsInSeg;
+      const localDist = dist + seg.len * t;
+      const bx = seg.p0.cx + seg.ux * seg.len * t, by = seg.p0.cy + seg.uy * seg.len * t;
+      const fadeStart = total - waveLength * 0.8;
+      const fade = localDist > fadeStart ? Math.max(0, 1 - (localDist - fadeStart) / (waveLength * 0.8)) : (localDist < waveLength * 0.4 ? localDist / (waveLength * 0.4) : 1);
+      const offset = Math.sin((localDist / waveLength) * 2 * Math.PI) * amplitude * fade;
+      const x = bx + seg.px * offset, y = by + seg.py * offset;
+      d += first ? `M${x.toFixed(1)},${y.toFixed(1)}` : ` L${x.toFixed(1)},${y.toFixed(1)}`;
+      first = false;
+    }
+    dist += seg.len;
+  });
+  return d;
+}
+
 function renderCourt() {
   diagnostics.length = 0;
   const phase = PLAY.phases[currentPhase];
@@ -434,32 +510,76 @@ function renderCourt() {
     width: COURT_RECT.w, height: COURT_RECT.h, preserveAspectRatio: 'none'
   }));
 
+  // Arrowhead markers, one per color key, per the template's marker
+  // convention. Every primary movement path gets marker-end; option lines
+  // get the same marker (their reduced opacity/dash already distinguishes
+  // them) - previously NO path had any marker at all, which is the bug
+  // the coach's review caught.
+  const defs = svgEl('defs', {});
+  Object.keys(COLOR_MAP).forEach(key => {
+    const marker = svgEl('marker', {
+      id: `arrow-${key}-${currentPhase}`, markerWidth: 7, markerHeight: 7,
+      refX: 5, refY: 2.5, orient: 'auto'
+    });
+    marker.appendChild(svgEl('path', { d: 'M0,0 L0,5 L7,2.5 z', fill: COLOR_MAP[key] }));
+    defs.appendChild(marker);
+  });
+  svg.appendChild(defs);
+
   const actions = phase.actions || [];
 
-  // Screens (crossbar T, angle derived)
+  // Screens: a short stem off the screener's own circle, angled toward the
+  // receiving player's approach, ending in a crossbar perpendicular to that
+  // player's direction of travel (angle derived, never stored). Matches the
+  // real convention in Dragon/Temple - a stem + crossbar offset from the
+  // screener's body, NOT a bar drawn through the screener's own dot.
   actions.filter(a => a.type === 'screen').forEach(a => {
     const angle = resolveScreenAngle(currentPhase, a, startPositions);
-    const len = 22;
-    const rad = angle * Math.PI / 180;
-    const dx = Math.cos(rad) * len / 2, dy = Math.sin(rad) * len / 2;
-    const p = a.atPoint;
-    const colorMap = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
+    const screenerPos = startPositions[a.byPlayerId] || a.atPoint;
+    const receiverPos = startPositions[a.forPlayerId];
+    let ux = 0, uy = -1; // default: stem points "up" if no receiver position to face
+    if (receiverPos) {
+      const dx = receiverPos.cx - screenerPos.cx, dy = receiverPos.cy - screenerPos.cy;
+      const d = Math.hypot(dx, dy) || 1;
+      ux = dx / d; uy = dy / d;
+    }
+    const stemStart = { x: screenerPos.cx + ux * PLAYER_RADIUS, y: screenerPos.cy + uy * PLAYER_RADIUS };
+    const stemEnd = { x: screenerPos.cx + ux * (PLAYER_RADIUS + 12), y: screenerPos.cy + uy * (PLAYER_RADIUS + 12) };
+    const color = COLOR_MAP[a.colorKey] || '#fff';
     svg.appendChild(svgEl('line', {
-      x1: p.cx - dx, y1: p.cy - dy, x2: p.cx + dx, y2: p.cy + dy,
-      stroke: colorMap[a.colorKey] || '#fff', 'stroke-width': 2.5
+      x1: stemStart.x, y1: stemStart.y, x2: stemEnd.x, y2: stemEnd.y,
+      stroke: color, 'stroke-width': 2.5
+    }));
+    const len = 11, rad = angle * Math.PI / 180;
+    const cdx = Math.cos(rad) * len, cdy = Math.sin(rad) * len;
+    svg.appendChild(svgEl('line', {
+      x1: stemEnd.x - cdx, y1: stemEnd.y - cdy, x2: stemEnd.x + cdx, y2: stemEnd.y + cdy,
+      stroke: color, 'stroke-width': 2.5
     }));
   });
 
-  // Movement actions: primary get solid+ghost+path, option get a thin faint path only
+  // Movement actions: primary get solid+ghost+path+arrowhead, option get a
+  // thinner, dashed, faded path but still a real arrowhead - never a bare
+  // line with no head, which is what the coach's review caught.
   actions.filter(a => a.type === 'dribble' || a.type === 'cut' || a.type === 'pass').forEach(a => {
-    const colorMap = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
-    const color = colorMap[a.colorKey] || '#fff';
+    const color = COLOR_MAP[a.colorKey] || '#fff';
     const isOption = a.style === 'option';
+    const isDribble = a.type === 'dribble';
+    let d = a.path;
+    if (isDribble && a.waypoints && a.waypoints.length >= 2) {
+      // Active dribble with real shape (e.g. going around a screen before
+      // turning downhill): squiggle across every leg, not just start->end.
+      d = squigglePath(a.waypoints);
+    } else if (isDribble && a.from && a.endpoint) {
+      // Active dribble, simple case: squiggle directly between from/endpoint.
+      d = squigglePath([a.from, a.endpoint]);
+    }
     svg.appendChild(svgEl('path', {
-      d: a.path, stroke: color, fill: 'none',
+      d, stroke: color, fill: 'none',
       'stroke-width': isOption ? 1.8 : 2.5,
       'stroke-dasharray': isOption ? '4,4' : (a.type === 'pass' ? '7,4' : 'none'),
-      opacity: isOption ? 0.55 : 1
+      opacity: isOption ? 0.6 : 1,
+      'marker-end': `url(#arrow-${a.colorKey}-${currentPhase})`
     }));
     if (a.endpoint && !isOption) {
       svg.appendChild(svgEl('circle', {
