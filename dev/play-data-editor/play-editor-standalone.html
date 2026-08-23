@@ -53,14 +53,44 @@
   .tip.show { opacity:1; }
   .tip strong { color:var(--gold); display:block; margin-bottom:2px; font-size:10.5px; }
   .pc { cursor:pointer; }
+  .pc.draggable { cursor:grab; }
+  .pc.dragging { cursor:grabbing; }
+
+  /* --- Edit mode / autosave / unsaved-changes UI (Step 10, microstep 1) --- */
+  .edit-toggle, .save-now-btn { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:1px; text-transform:uppercase; padding:5px 10px; border-radius:3px; border:1px solid var(--border); background:#161c27; color:var(--white); cursor:pointer; flex:none; white-space:nowrap; }
+  .edit-toggle.on { background:var(--gold); color:#0d1017; border-color:var(--gold); font-weight:700; }
+  .save-now-btn { background:#1e5c38; border-color:#27ae60; color:#c9f0d8; }
+  .save-now-btn:disabled { opacity:.4; cursor:default; }
+  .dirty-status { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.5px; color:var(--gray); flex:none; white-space:nowrap; }
+  .dirty-status.dirty { color:#f0b429; }
+  .dirty-status.saved { color:#27ae60; }
+  .dirty-status.saveerr { color:#ff7b6e; }
+
+  .draft-banner { display:none; flex:none; padding:8px 20px; background:rgba(240,180,41,.08); border-bottom:1px solid rgba(240,180,41,.3); font-family:'DM Mono',monospace; font-size:11px; color:var(--gold); align-items:center; gap:12px; }
+  .draft-banner.show { display:flex; }
+  .draft-banner button { font-family:'DM Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:4px 10px; border-radius:3px; cursor:pointer; border:1px solid var(--gold); background:transparent; color:var(--gold); }
+  .draft-banner button.primary { background:var(--gold); color:#0d1017; font-weight:700; }
+
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; align-items:center; justify-content:center; }
+  .modal-overlay.show { display:flex; }
+  .modal-box { background:#141a24; border:1px solid var(--border); border-radius:6px; padding:22px 24px; max-width:380px; font-family:'DM Sans',sans-serif; }
+  .modal-box h4 { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:1.5px; color:var(--gold); margin-bottom:10px; }
+  .modal-box p { font-size:12.5px; line-height:1.5; color:var(--white); margin-bottom:16px; }
+  .modal-actions { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  .modal-actions button { font-family:'DM Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:7px 12px; border-radius:3px; cursor:pointer; border:1px solid var(--border); background:#1c2532; color:var(--white); }
+  .modal-actions button.primary { background:var(--gold); color:#0d1017; border-color:var(--gold); font-weight:700; }
+  .modal-actions button.danger { background:#5c2a26; border-color:#ff7b6e; color:#ffd6d0; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>ChalkTalk <span>Play Editor</span></h1>
-  <div class="step-badge">Step 9 - Read-Only Live Data Test (deMatha)</div>
+  <div class="step-badge">Step 10 - Edit Mode (deMatha)</div>
   <div class="data-status pending" id="dataStatus">Loading play data from Supabase...</div>
+  <button class="edit-toggle" id="editToggle" style="display:none;">Edit Mode: Off</button>
+  <button class="save-now-btn" id="saveNowBtn" style="display:none;" disabled>Save Now</button>
+  <div class="dirty-status" id="dirtyStatus"></div>
   <div class="court-toggle">
     Court:
     <select id="courtLevel">
@@ -70,6 +100,35 @@
     <span class="info-dot" title="Swaps the embedded background image only - player/action coordinates are one shared system. Two real court art assets, grouped by level, not gender: HS/Youth art also serves any level below college, Pro/College art also serves college play of either gender - not a missing-asset fallback.">i</span>
   </div>
 </header>
+
+<div class="draft-banner" id="draftBanner">
+  <span>You have an unsaved local draft of this play from a previous session.</span>
+  <button class="primary" id="restoreDraftBtn">Restore it</button>
+  <button id="discardDraftBtn">Discard it</button>
+</div>
+
+<div class="modal-overlay" id="exitModal">
+  <div class="modal-box">
+    <h4>Unsaved Changes</h4>
+    <p>You have edits that haven't been saved to the database yet. What do you want to do?</p>
+    <div class="modal-actions">
+      <button id="exitCancelBtn">Keep Editing</button>
+      <button class="danger" id="exitDiscardBtn">Discard &amp; Exit</button>
+      <button class="primary" id="exitSaveBtn">Save Now</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="conflictModal">
+  <div class="modal-box">
+    <h4>Someone Else Changed This Play</h4>
+    <p>This play was updated in the database since you loaded it - probably by another coach, or another tab. Saving now would overwrite that change. Overwrite anyway, or cancel and reload the page first to see the latest version?</p>
+    <div class="modal-actions">
+      <button id="conflictCancelBtn">Cancel</button>
+      <button class="danger" id="conflictOverwriteBtn">Overwrite Anyway</button>
+    </div>
+  </div>
+</div>
 
 <div class="main">
   <div class="court-area">
@@ -116,6 +175,199 @@ const COURT_IMAGES = {
 let PLAY = null;
 const players = {};
 
+// --- Step 10, microstep 1: autosave + unsaved-changes protection ---
+// Nothing here writes to Supabase except explicit "Save Now" (or the
+// exit-modal's "Save Now" button, which calls the same function). Everything
+// else is a local safety net: a debounced copy of the in-memory PLAY object
+// in localStorage, so an accidental tab close or reload doesn't silently
+// lose a coach's edits, plus a guard on leaving the page while dirty.
+const DRAFT_KEY = 'chalktalk-draft-chin-ball-screen';
+let editMode = false;
+let isDirty = false;
+let loadedSnapshot = null;   // deep clone of PLAY as last loaded/saved from Supabase - what "Discard" reverts to
+let loadedUpdatedAt = null;  // structured_plays.updated_at as of last load/save - used to detect a concurrent edit before overwriting
+let autosaveTimer = null;
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function markDirty() {
+  isDirty = true;
+  updateDirtyUI();
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), play: PLAY }));
+    } catch (e) {
+      // localStorage can throw (private browsing, quota, disabled) - this is
+      // a safety net, not the primary save path, so surface it quietly in
+      // the status text rather than blocking anything.
+      console.warn('ChalkTalk: local autosave failed', e);
+    }
+  }, 600);
+}
+
+function updateDirtyUI() {
+  const el = document.getElementById('dirtyStatus');
+  const saveBtn = document.getElementById('saveNowBtn');
+  if (isDirty) {
+    el.textContent = 'Unsaved changes (autosaved locally)';
+    el.className = 'dirty-status dirty';
+    saveBtn.disabled = false;
+  } else {
+    el.textContent = '';
+    el.className = 'dirty-status';
+    saveBtn.disabled = true;
+  }
+}
+
+function clearLocalDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* ignore - see markDirty */ }
+}
+
+function checkForLocalDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return; }
+  if (!raw) return;
+  // A draft key only ever exists between "an edit happened" and "it was
+  // saved or explicitly discarded" (see markDirty/clearLocalDraft) - so its
+  // mere presence means there's real pending work to offer back, not a
+  // guess based on timestamps.
+  document.getElementById('draftBanner').classList.add('show');
+}
+
+document.getElementById('restoreDraftBtn').addEventListener('click', () => {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { raw = null; }
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      PLAY = parsed.play;
+      players && Object.keys(players).forEach(k => delete players[k]);
+      PLAY.players.forEach(p => players[p.id] = p);
+      markDirty(); // restoring a draft IS an unsaved change relative to the DB row
+      renderAll();
+    } catch (e) {
+      console.error('ChalkTalk: failed to parse local draft', e);
+    }
+  }
+  document.getElementById('draftBanner').classList.remove('show');
+});
+
+document.getElementById('discardDraftBtn').addEventListener('click', () => {
+  clearLocalDraft();
+  document.getElementById('draftBanner').classList.remove('show');
+});
+
+// Native browser guard against closing the tab / reloading / navigating away
+// with unsaved changes. The browser controls the exact wording of this
+// dialog - we can't customize it - but it's the only mechanism that can
+// actually intercept a real tab close, which our own modal below cannot.
+window.addEventListener('beforeunload', (e) => {
+  if (isDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function discardAndRevert() {
+  PLAY = deepClone(loadedSnapshot);
+  Object.keys(players).forEach(k => delete players[k]);
+  PLAY.players.forEach(p => players[p.id] = p);
+  isDirty = false;
+  updateDirtyUI();
+  clearLocalDraft();
+  renderAll();
+}
+
+async function saveNow(force) {
+  const dirtyEl = document.getElementById('dirtyStatus');
+  const saveBtn = document.getElementById('saveNowBtn');
+  saveBtn.disabled = true;
+  dirtyEl.textContent = 'Saving...';
+  dirtyEl.className = 'dirty-status dirty';
+
+  if (!force) {
+    // Conflict check: has anyone else (another coach, another tab) changed
+    // this row since we loaded it? A plain overwrite here is exactly the
+    // kind of silent data loss this whole step exists to prevent.
+    const { data: current, error: checkErr } = await supabase
+      .from('structured_plays')
+      .select('updated_at')
+      .eq('slug', 'chin-ball-screen')
+      .single();
+    if (checkErr) {
+      dirtyEl.textContent = 'Save check failed: ' + checkErr.message;
+      dirtyEl.className = 'dirty-status saveerr';
+      saveBtn.disabled = false;
+      return;
+    }
+    if (current.updated_at !== loadedUpdatedAt) {
+      updateDirtyUI(); // restore the normal "unsaved changes" text under the modal
+      showModal('conflictModal');
+      return;
+    }
+  }
+
+  const { data: saved, error: saveErr } = await supabase
+    .from('structured_plays')
+    .update({ data: PLAY, updated_at: new Date().toISOString() })
+    .eq('slug', 'chin-ball-screen')
+    .select('updated_at')
+    .single();
+
+  if (saveErr) {
+    dirtyEl.textContent = 'Save failed: ' + saveErr.message;
+    dirtyEl.className = 'dirty-status saveerr';
+    saveBtn.disabled = false;
+    return;
+  }
+
+  loadedUpdatedAt = saved.updated_at;
+  loadedSnapshot = deepClone(PLAY);
+  isDirty = false;
+  clearLocalDraft();
+  dirtyEl.textContent = 'Saved to Supabase just now';
+  dirtyEl.className = 'dirty-status saved';
+  saveBtn.disabled = true;
+}
+
+document.getElementById('saveNowBtn').addEventListener('click', () => saveNow(false));
+document.getElementById('conflictOverwriteBtn').addEventListener('click', () => { hideModal('conflictModal'); saveNow(true); });
+document.getElementById('conflictCancelBtn').addEventListener('click', () => hideModal('conflictModal'));
+
+document.getElementById('exitCancelBtn').addEventListener('click', () => hideModal('exitModal'));
+document.getElementById('exitDiscardBtn').addEventListener('click', () => {
+  hideModal('exitModal');
+  discardAndRevert();
+  applyEditModeUI(false);
+});
+document.getElementById('exitSaveBtn').addEventListener('click', async () => {
+  hideModal('exitModal');
+  await saveNow(false);
+  if (!isDirty) applyEditModeUI(false);
+});
+
+function applyEditModeUI(on) {
+  editMode = on;
+  const btn = document.getElementById('editToggle');
+  btn.textContent = 'Edit Mode: ' + (on ? 'On' : 'Off');
+  btn.className = 'edit-toggle' + (on ? ' on' : '');
+  renderCourt(); // toggles draggable cursor styling on player circles
+}
+
+document.getElementById('editToggle').addEventListener('click', () => {
+  if (editMode && isDirty) {
+    // Turning edit mode off while there are unsaved changes - this is the
+    // "still exit or save now" moment, not a place to silently drop edits.
+    showModal('exitModal');
+    return;
+  }
+  applyEditModeUI(!editMode);
+});
+
 function loadPlay() {
   const statusEl = document.getElementById('dataStatus');
 
@@ -131,7 +383,7 @@ function loadPlay() {
 
     const { data: row, error: queryError } = await supabase
       .from('structured_plays')
-      .select('data')
+      .select('data, updated_at')
       .eq('slug', 'chin-ball-screen')
       .single();
 
@@ -144,10 +396,16 @@ function loadPlay() {
 
     PLAY = row.data;
     PLAY.players.forEach(p => players[p.id] = p);
+    loadedUpdatedAt = row.updated_at;
+    loadedSnapshot = deepClone(PLAY);
 
     statusEl.textContent = 'Loaded live from Supabase (structured_plays: chin-ball-screen)';
     statusEl.className = 'data-status ok';
 
+    document.getElementById('editToggle').style.display = '';
+    document.getElementById('saveNowBtn').style.display = '';
+
+    checkForLocalDraft();
     renderAll();
   }).catch(err => {
     // Catches a failed module import (wrong path, CORS, opened as a local
@@ -255,6 +513,65 @@ function svgEl(tag, attrs) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const k in attrs) el.setAttribute(k, attrs[k]);
   return el;
+}
+
+// Pointer-based drag (not mouse-only) so this works on a touch device (an
+// iPad or phone on the sideline is a completely realistic way a coach would
+// actually use this, not just a laptop with a mouse). Mutates `posData`
+// directly - that object IS the real entry in phase.playerPositions (see
+// the .find() call at the call site), so the change is real, not a copy.
+// During an active drag we move the circle/text via direct DOM attribute
+// writes rather than calling renderCourt() on every pointermove: renderCourt
+// tears down and rebuilds the whole <svg>, which would destroy the very
+// element holding pointer capture mid-drag and cut the drag short. A full
+// renderCourt() only happens once, on pointerup, to reconcile everything
+// (ball dot position, tooltip data, diagnostics) precisely.
+function attachDragHandlers(g, svg, posData, startPos) {
+  let dragging = false;
+  let startSvgPt = null;
+  let startCx = 0, startCy = 0;
+
+  function svgPointFromEvent(e) {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: startPos.cx, y: startPos.cy };
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    return { x: pt.x, y: pt.y };
+  }
+
+  g.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    try { g.setPointerCapture(e.pointerId); } catch (err) {}
+    g.classList.add('dragging');
+    startSvgPt = svgPointFromEvent(e);
+    startCx = posData.cx;
+    startCy = posData.cy;
+  });
+
+  g.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const cur = svgPointFromEvent(e);
+    const newCx = startCx + (cur.x - startSvgPt.x);
+    const newCy = startCy + (cur.y - startSvgPt.y);
+    posData.cx = newCx;
+    posData.cy = newCy;
+    const circle = g.querySelector('circle');
+    const text = g.querySelector('text');
+    if (circle) { circle.setAttribute('cx', newCx); circle.setAttribute('cy', newCy); }
+    if (text) { text.setAttribute('x', newCx); text.setAttribute('y', newCy + 4); }
+  });
+
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    g.classList.remove('dragging');
+    try { g.releasePointerCapture(e.pointerId); } catch (err) {}
+    const moved = Math.hypot(posData.cx - startCx, posData.cy - startCy);
+    if (moved > 1.5) markDirty();
+    renderCourt();
+  }
+  g.addEventListener('pointerup', endDrag);
+  g.addEventListener('pointercancel', endDrag);
 }
 
 const COLOR_MAP = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
@@ -390,12 +707,22 @@ function renderCourt() {
     }
   });
 
-  // Player solid circles at resolved start-of-phase position
+  // Player solid circles at resolved start-of-phase position. Dragging is
+  // enabled here (Edit Mode on) ONLY for Phase 1 for now - not a corner case
+  // being ignored, a deliberate scope limit: resolvePhaseStartPositions()
+  // above makes every later phase's position DERIVED from the previous
+  // phase's action endpoint, overriding whatever's authored in that later
+  // phase's own playerPositions (see the DRIFT WARNING logic). Dragging in
+  // a later phase right now would silently do nothing visible, which is
+  // worse than not offering it - proper support needs dragging to also
+  // update the source action's endpoint, which is real work saved for a
+  // later microstep, not quietly shipped half-working here.
+  const dragEnabled = editMode && currentPhase === 0;
   PLAY.players.forEach(pl => {
     const pos = startPositions[pl.id];
     if (!pos) return;
     const posData = phase.playerPositions.find(pp => pp.playerId === pl.id) || {};
-    const g = svgEl('g', { class: 'pc' });
+    const g = svgEl('g', { class: 'pc' + (dragEnabled ? ' draggable' : '') });
     g.dataset.label = posData.tooltipShort || pl.number;
     g.dataset.text = posData.tooltipFull || '';
     g.appendChild(svgEl('circle', { cx: pos.cx, cy: pos.cy, r: 9, fill: pl.color, stroke: pl.stroke, 'stroke-width': 2 }));
@@ -405,6 +732,7 @@ function renderCourt() {
     if (posData.hasBall) {
       svg.appendChild(svgEl('circle', { cx: pos.cx, cy: pos.cy + 14, r: 6, fill: '#ff6b00', stroke: 'white', 'stroke-width': 1 }));
     }
+    if (dragEnabled) attachDragHandlers(g, svg, posData, pos);
     svg.appendChild(g);
   });
 
@@ -417,19 +745,6 @@ function renderCourt() {
   const cw = document.getElementById('cw');
   cw.querySelectorAll('svg').forEach(s => s.remove());
   cw.appendChild(svg);
-
-  const tip = document.getElementById('tip');
-  cw.addEventListener('mousemove', e => {
-    const pc = e.target.closest('.pc');
-    if (pc) {
-      tip.innerHTML = '<strong>' + pc.dataset.label + '</strong>' + pc.dataset.text;
-      tip.classList.add('show');
-      const r = cw.getBoundingClientRect();
-      let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
-      if (x + 220 > r.width) x = e.clientX - r.left - 224;
-      tip.style.left = x + 'px'; tip.style.top = y + 'px';
-    } else { tip.classList.remove('show'); }
-  });
 
   document.getElementById('diag').textContent = diagnostics.join('\n') || '(no diagnostics this phase)';
   document.getElementById('diag').className = 'diag' + (diagnostics.some(d => d.includes('WARNING') || d.includes('UNRESOLVED')) ? ' warn' : '');
@@ -467,6 +782,26 @@ function renderAll() {
 document.getElementById('courtLevel').addEventListener('change', e => {
   currentCourt = e.target.value;
   if (PLAY) renderCourt();
+});
+
+// Attached once here, not inside renderCourt() (which used to re-add this
+// same listener on every single render - harmless-looking but a real
+// listener leak that would have compounded fast once renderCourt started
+// firing on every drag-end and edit-mode toggle in Step 10). #cw itself is
+// never destroyed/recreated - only the <svg> inside it is - so one listener
+// here covers every future render.
+const cw = document.getElementById('cw');
+const tip = document.getElementById('tip');
+cw.addEventListener('mousemove', e => {
+  const pc = e.target.closest('.pc');
+  if (pc) {
+    tip.innerHTML = '<strong>' + pc.dataset.label + '</strong>' + pc.dataset.text;
+    tip.classList.add('show');
+    const r = cw.getBoundingClientRect();
+    let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+    if (x + 220 > r.width) x = e.clientX - r.left - 224;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  } else { tip.classList.remove('show'); }
 });
 
 loadPlay();
