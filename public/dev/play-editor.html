@@ -119,6 +119,18 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="actionPromptModal">
+  <div class="modal-box">
+    <h4>Player Repositioned</h4>
+    <p id="actionPromptText"></p>
+    <div class="modal-actions">
+      <button id="actionPromptCancelBtn">Cancel (Undo Move)</button>
+      <button disabled title="Coming in a later step - regenerates this action from a description via AI">Describe New Action...</button>
+      <button class="primary" id="sameActionBtn">Same Action, New Spot</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="conflictModal">
   <div class="modal-box">
     <h4>Someone Else Changed This Play</h4>
@@ -567,12 +579,117 @@ function attachDragHandlers(g, svg, posData, startPos) {
     g.classList.remove('dragging');
     try { g.releasePointerCapture(e.pointerId); } catch (err) {}
     const moved = Math.hypot(posData.cx - startCx, posData.cy - startCy);
-    if (moved > 1.5) markDirty();
-    renderCourt();
+    if (moved > 1.5) {
+      handlePlayerRepositioned(posData, startCx, startCy);
+    } else {
+      renderCourt();
+    }
   }
   g.addEventListener('pointerup', endDrag);
   g.addEventListener('pointercancel', endDrag);
 }
+
+// --- Step 10, microstep 2 (partial): what happens when a player's drag
+// actually moves them, decided by the coach, not guessed at silently ---
+// "owned" = actions this player performs THIS phase (playerId for a
+// cut/dribble/pass, byPlayerId for a screen they're setting) - not actions
+// where they're merely the target (a screen's forPlayerId, a pass's
+// receiver), which belong to someone else's action, not theirs.
+let pendingReposition = null;
+
+function getOwnedActions(phase, playerId) {
+  return (phase.actions || []).filter(a => a.playerId === playerId || a.byPlayerId === playerId);
+}
+
+function handlePlayerRepositioned(posData, oldCx, oldCy) {
+  const phase = PLAY.phases[currentPhase];
+  const owned = getOwnedActions(phase, posData.playerId);
+  if (owned.length === 0) {
+    // No action starts from this player in this phase - it's just a plain
+    // position edit (e.g. moving a spacer who doesn't do anything this
+    // phase), nothing to ask about.
+    markDirty();
+    renderCourt();
+    return;
+  }
+  pendingReposition = { posData, oldCx, oldCy, owned };
+  const names = owned.map(a => `"${a.id}"`).join(', ');
+  document.getElementById('actionPromptText').textContent =
+    posData.playerId + ' moved, which affects ' + (owned.length > 1 ? 'actions ' : 'action ') + names +
+    ' in this phase. Is this still the same action, just starting from the new spot - or something different?';
+  showModal('actionPromptModal');
+}
+
+// Deterministic re-anchoring, no AI involved: keeps the SAME curve shape
+// (the bezier control point's offset from the start/end midpoint) but
+// re-centers it on the new start position, with the endpoint left
+// untouched. Per the ripple rule agreed for this feature: the endpoint
+// never changes here, so nothing downstream (later phases that inherit
+// from this action's endpoint) needs to be touched either.
+function applySameActionReposition(action, oldCx, oldCy, newCx, newCy) {
+  if (action.type === 'screen') {
+    // Screens already derive their stem/crossbar from the screener's own
+    // LIVE rendered position every render (see resolveScreenAngle /
+    // renderCourt's `startPositions[a.byPlayerId]`) - there is no separately
+    // authored screener coordinate on the action itself to update.
+    return;
+  }
+  if (action.path && action.endpoint) {
+    const m = action.path.match(/M\s*([-\d.]+),([-\d.]+)\s*Q\s*([-\d.]+),([-\d.]+)\s*([-\d.]+),([-\d.]+)/);
+    if (!m) {
+      // `diagnostics` is cleared at the top of every renderCourt() call (it's
+      // a per-render log, not a running history), and renderCourt() runs
+      // right after this returns - pushing there would be wiped before
+      // anyone saw it. console.warn is the honest way to surface this.
+      console.warn('REPOSITION: action "' + action.id + '" has a path that is not a simple M..Q.. curve - could not re-anchor it automatically.');
+      return;
+    }
+    const cx0 = Number(m[3]), cy0 = Number(m[4]);
+    const ex = action.endpoint.cx, ey = action.endpoint.cy;
+    const mid0x = (oldCx + ex) / 2, mid0y = (oldCy + ey) / 2;
+    const perpX = cx0 - mid0x, perpY = cy0 - mid0y;
+    const mid1x = (newCx + ex) / 2, mid1y = (newCy + ey) / 2;
+    const newCtrlX = mid1x + perpX, newCtrlY = mid1y + perpY;
+    action.path = 'M' + newCx.toFixed(1) + ',' + newCy.toFixed(1) +
+      ' Q' + newCtrlX.toFixed(1) + ',' + newCtrlY.toFixed(1) +
+      ' ' + ex + ',' + ey;
+    return;
+  }
+  if (action.waypoints && action.waypoints.length) {
+    action.waypoints[0] = { cx: newCx, cy: newCy };
+    if (action.from) action.from = { cx: newCx, cy: newCy };
+    return;
+  }
+  if (action.from && action.endpoint) {
+    action.from = { cx: newCx, cy: newCy };
+    return;
+  }
+}
+
+document.getElementById('sameActionBtn').addEventListener('click', () => {
+  if (!pendingReposition) return;
+  const { posData, oldCx, oldCy, owned } = pendingReposition;
+  owned.forEach(a => applySameActionReposition(a, oldCx, oldCy, posData.cx, posData.cy));
+  pendingReposition = null;
+  hideModal('actionPromptModal');
+  markDirty();
+  renderCourt();
+});
+
+document.getElementById('actionPromptCancelBtn').addEventListener('click', () => {
+  if (pendingReposition) {
+    // Undo the move entirely. There's nowhere to send "something different"
+    // yet (that's the AI-regeneration path from the plan, not built) - so
+    // leaving the player moved with their action untouched would silently
+    // orphan an arrow that now starts from the wrong place, which is worse
+    // than just reverting the drag.
+    pendingReposition.posData.cx = pendingReposition.oldCx;
+    pendingReposition.posData.cy = pendingReposition.oldCy;
+  }
+  pendingReposition = null;
+  hideModal('actionPromptModal');
+  renderCourt();
+});
 
 const COLOR_MAP = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
 const PLAYER_RADIUS = 9;
