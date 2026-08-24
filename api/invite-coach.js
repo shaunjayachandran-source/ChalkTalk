@@ -131,4 +131,4 @@ export default async function handler(req, res) {
   }
 
   return sendJson(res, 200, { ok: true, email, role, canPublish: !!canPublish, name: trimmedName || null });
-
+}
