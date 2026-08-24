@@ -634,7 +634,10 @@ function computeZoneDefensePositions(phase, startPositions) {
   const shape = (PLAY.defense && PLAY.defense.zoneShape) || '2-3';
   const slots = ZONE_BASE_SLOTS[shape] || ZONE_BASE_SLOTS['2-3'];
   const ballHandlerId = findBallHandlerId(phase);
-  const ballPos = ballHandlerId ? startPositions[ballHandlerId] : null;
+  // Same fix as man defense: a zone shell should shade toward where a live
+  // drive is actually taking the ball this phase, not just where it started -
+  // otherwise a zone would visibly lag a phase behind a real rotation.
+  const ballPos = getEffectiveBallPos(phase, startPositions, ballHandlerId);
   return slots.map((slot, i) => {
     if (!ballPos) return { guardedNumber: null, slotIndex: i + 1, cx: slot.cx, cy: slot.cy };
     const cx = slot.cx + (ballPos.cx - slot.cx) * ZONE_BALL_SHIFT;
