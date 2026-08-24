@@ -354,6 +354,7 @@
       </table>
 
       <div class="add-form" id="invite-coach-form" style="display:none;">
+                <input type="text" id="new-coach-name" placeholder="Name (optional)" />
         <input type="text" id="new-coach-email" placeholder="Email" />
         <select id="new-coach-role">
           <option value="assistant_coach">Assistant Coach</option>
@@ -833,10 +834,12 @@
   }
 
   document.getElementById("invite-coach-btn")?.addEventListener("click", async () => {
+        const nameInput = document.getElementById("new-coach-name");
     const emailInput = document.getElementById("new-coach-email");
     const roleSelect = document.getElementById("new-coach-role");
     const canPublishCheckbox = document.getElementById("new-coach-can-publish");
     const statusEl = document.getElementById("invite-coach-status");
+    const name = nameInput.value.trim();
     const email = emailInput.value.trim();
     if (!email || !currentProgramId) return;
 
@@ -856,6 +859,7 @@
         },
         body: JSON.stringify({
           programId: currentProgramId,
+          name: name || undefined,
           email,
           role: roleSelect.value,
           canPublish: canPublishCheckbox.checked,
@@ -873,6 +877,7 @@
 
     statusEl.className = "";
     statusEl.textContent = `Invited ${email}. They'll get a real Supabase login email to set their password.`;
+    nameInput.value = "";
     emailInput.value = "";
     canPublishCheckbox.checked = false;
     btn.disabled = false;

@@ -1,6 +1,6 @@
 /**
  * POST /api/invite-coach
- * Body: { programId, email, role, canPublish }
+ * Body: { programId, email, role, canPublish, name? }
  *
  * The real "Invite Coach" endpoint -- replaces the fully manual process of
  * Shaun going into Supabase Auth's Users panel, inviting a coach by hand,
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed" });
   }
 
-  const { programId, email, role, canPublish } = req.body || {};
+  const { programId, email, role, canPublish, name } = req.body || {};
 
   if (!programId || !email || !role) {
     return sendJson(res, 400, { error: "programId, email, and role are all required" });
@@ -102,9 +102,14 @@ export default async function handler(req, res) {
 
   const newCoachId = inviteData.user.id;
 
+    const trimmedName = typeof name === "string" ? name.trim() : "";
+
   const { error: coachUpsertErr } = await serviceClient
     .from("coaches")
-    .upsert({ id: newCoachId, email }, { onConflict: "id" });
+    .upsert(
+      { id: newCoachId, email, ...(trimmedName ? { display_name: trimmedName } : {}) },
+      { onConflict: "id" }
+    );
 
   if (coachUpsertErr) {
     return sendJson(res, 500, {
@@ -125,6 +130,5 @@ export default async function handler(req, res) {
     });
   }
 
-  return sendJson(res, 200, { ok: true, email, role, canPublish: !!canPublish });
+  return sendJson(res, 200, { ok: true, email, role, canPublish: !!canPublish, name: trimmedName || null });
 }
-
