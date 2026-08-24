@@ -505,10 +505,27 @@ function findBallHandlerId(phase) {
 // on the floor's perimeter/interior ring) and count hops from the ball
 // handler along that ring. 0 = has the ball, 1 = immediate neighbor either
 // direction (~standard "deny" distance), 2+ = everyone else ("help" distance).
-function passesAwayFromBall(startPositions, ballHandlerId) {
+// Real defensive rotations react to where a live dribble drive actually
+// takes the ball, not just where the phase started - a coach reading "1
+// drives off the screen to the wing" expects the corner defender on THAT
+// side to already be sliding into the passing lane, not waiting for a future
+// phase that may not exist. So for ranking purposes, the ball handler's own
+// position is their primary (non-option) action's ENDPOINT this phase, when
+// they have one, not their static phase-start spot - everyone else still
+// uses their real start position, since they're not the one moving the ball.
+function getEffectiveBallPos(phase, startPositions, ballHandlerId) {
+  if (!ballHandlerId) return null;
+  const primary = (phase.actions || []).find(a =>
+    a.playerId === ballHandlerId && a.style !== 'option' && a.endpoint
+  );
+  if (primary) return { cx: primary.endpoint.cx, cy: primary.endpoint.cy };
+  return startPositions[ballHandlerId] || null; // ball handler has no action this phase - use their real spot
+}
+
+function passesAwayFromBall(startPositions, ballHandlerId, effectiveBallPos) {
   const ids = PLAY.players.map(p => p.id).filter(id => startPositions[id]);
   const angleOf = (id) => {
-    const p = startPositions[id];
+    const p = (id === ballHandlerId && effectiveBallPos) ? effectiveBallPos : startPositions[id];
     return Math.atan2(p.cy - BASKET.cy, p.cx - BASKET.cx);
   };
   const ring = ids.slice().sort((a, b) => angleOf(a) - angleOf(b));
@@ -547,8 +564,9 @@ function computeManDefensePositions(phase, startPositions) {
   const intensity = (PLAY.defense && PLAY.defense.manIntensity) || 'passive';
   const g = MAN_GAPS[intensity] || MAN_GAPS.passive;
   const ballHandlerId = findBallHandlerId(phase);
-  const passesAway = passesAwayFromBall(startPositions, ballHandlerId);
-  const ballPos = ballHandlerId ? startPositions[ballHandlerId] : null;
+  const effectiveBallPos = getEffectiveBallPos(phase, startPositions, ballHandlerId);
+  const passesAway = passesAwayFromBall(startPositions, ballHandlerId, effectiveBallPos);
+  const ballPos = effectiveBallPos; // where the ball actually ends up this phase, not just where it started
 
   return PLAY.players.map(pl => {
     const manPos = startPositions[pl.id];
@@ -564,7 +582,7 @@ function computeManDefensePositions(phase, startPositions) {
       // anyone near the top of the key, "toward the basket" is ALSO
       // straight down, so without this nudge the two fully overlapped).
       const perpX = -toBasket.uy, perpY = toBasket.ux;
-      return { guardedId: pl.id, guardedNumber: pl.number,
+      return { guardedId: pl.id, guardedNumber: pl.number, hop,
         cx: manPos.cx + toBasket.ux * g.onBallGap + perpX * g.onBallPerp,
         cy: manPos.cy + toBasket.uy * g.onBallGap + perpY * g.onBallPerp };
     }
@@ -574,13 +592,16 @@ function computeManDefensePositions(phase, startPositions) {
 
     if (hop === 1) {
       // One pass away: deny stance - lean into the passing lane between the
-      // man and the ball.
+      // man and the ball. Carries ballPos/manPos along so the renderer can
+      // draw the actual passing lane this defender is denying, not just the
+      // marker - the "why" of the position, not just the position itself.
       const lx = toBasket.ux * (1 - g.denyBallWeight) + toBall.ux * g.denyBallWeight;
       const ly = toBasket.uy * (1 - g.denyBallWeight) + toBall.uy * g.denyBallWeight;
       const n = normalize(lx, ly);
       const dist = distToBasket * g.denyFraction;
-      return { guardedId: pl.id, guardedNumber: pl.number,
-        cx: manPos.cx + n.ux * dist, cy: manPos.cy + n.uy * dist };
+      return { guardedId: pl.id, guardedNumber: pl.number, hop,
+        cx: manPos.cx + n.ux * dist, cy: manPos.cy + n.uy * dist,
+        laneFrom: ballPos, laneTo: manPos };
     }
 
     // Two-plus passes away: help stance - converge toward the help line
@@ -589,7 +610,7 @@ function computeManDefensePositions(phase, startPositions) {
     const hy = toBasket.uy * (1 - g.helpBallWeight) + toBall.uy * g.helpBallWeight;
     const n = normalize(hx, hy);
     const dist = distToBasket * g.helpFraction;
-    return { guardedId: pl.id, guardedNumber: pl.number,
+    return { guardedId: pl.id, guardedNumber: pl.number, hop,
       cx: manPos.cx + n.ux * dist, cy: manPos.cy + n.uy * dist };
   }).filter(Boolean);
 }
@@ -1019,6 +1040,19 @@ function renderCourt() {
   // above for why). Never draggable this pass, per the earlier scoping.
   if (showDefense && PLAY.defense) {
     const defPositions = computeDefensePositions(phase, startPositions);
+    // Passing-lane lines for deny defenders (1 pass away) - drawn first so
+    // the X markers sit on top of them, not the other way around. Shows the
+    // actual lane being denied (ball -> the man this X is fronting), so the
+    // position reads as "here because of this pass," not just a bare dot.
+    defPositions.forEach(d => {
+      if (d.hop === 1 && d.laneFrom && d.laneTo) {
+        svg.appendChild(svgEl('line', {
+          x1: d.laneFrom.cx, y1: d.laneFrom.cy, x2: d.laneTo.cx, y2: d.laneTo.cy,
+          stroke: '#6b7684', 'stroke-width': 1.2, 'stroke-dasharray': '3,3', opacity: 0.55
+        }));
+      }
+    });
+
     defPositions.forEach((d, i) => {
       const subscript = d.guardedNumber != null ? d.guardedNumber : (d.slotIndex != null ? d.slotIndex : i + 1);
       const g = svgEl('g', { class: 'defender' });
