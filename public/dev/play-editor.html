@@ -90,6 +90,7 @@
   <div class="data-status pending" id="dataStatus">Loading play data from Supabase...</div>
   <button class="edit-toggle" id="editToggle" style="display:none;">Edit Mode: Off</button>
   <button class="save-now-btn" id="saveNowBtn" style="display:none;" disabled>Save Now</button>
+  <button class="edit-toggle" id="defenseToggle" style="display:none;">Show Defense: Off</button>
   <div class="dirty-status" id="dirtyStatus"></div>
   <div class="court-toggle">
     Court:
@@ -195,6 +196,8 @@ const players = {};
 // lose a coach's edits, plus a guard on leaving the page while dirty.
 const DRAFT_KEY = 'chalktalk-draft-chin-ball-screen';
 let editMode = false;
+let showDefense = false;  // display-only toggle, independent of Edit Mode - defense is read from
+                          // PLAY.defense (already-loaded data), never mutated by this toggle
 let isDirty = false;
 let loadedSnapshot = null;   // deep clone of PLAY as last loaded/saved from Supabase - what "Discard" reverts to
 let loadedUpdatedAt = null;  // structured_plays.updated_at as of last load/save - used to detect a concurrent edit before overwriting
@@ -380,6 +383,14 @@ document.getElementById('editToggle').addEventListener('click', () => {
   applyEditModeUI(!editMode);
 });
 
+document.getElementById('defenseToggle').addEventListener('click', () => {
+  showDefense = !showDefense;
+  const btn = document.getElementById('defenseToggle');
+  btn.textContent = 'Show Defense: ' + (showDefense ? 'On' : 'Off');
+  btn.className = 'edit-toggle' + (showDefense ? ' on' : '');
+  renderCourt();
+});
+
 function loadPlay() {
   const statusEl = document.getElementById('dataStatus');
 
@@ -416,6 +427,12 @@ function loadPlay() {
 
     document.getElementById('editToggle').style.display = '';
     document.getElementById('saveNowBtn').style.display = '';
+    if (PLAY.defense) {
+      // Only reveal the toggle when this play actually has a defense authored -
+      // per-play scope means most plays may have none, and a toggle for a
+      // feature with nothing to show would just be a confusing dead button.
+      document.getElementById('defenseToggle').style.display = '';
+    }
 
     checkForLocalDraft();
     renderAll();
@@ -465,6 +482,135 @@ function resolvePhaseStartPositions(phaseIndex) {
     }
   });
   return resolved;
+}
+
+// ---- Defense overlay (per-play, opt-in via PLAY.defense, display-only via
+// the "Show Defense" toggle - never draggable, never separately authored
+// per-phase coordinates). Every defender position below is computed FRESH
+// from this phase's resolved startPositions/hasBall every render, the same
+// discipline screens already use for the screener's position - so ANY future
+// change to where an offensive player ends up (a drag, a deterministic
+// reposition, or eventually an AI regeneration) is automatically reflected
+// here with zero extra wiring, instead of needing its own update path.
+const BASKET = { cx: 260, cy: 370 }; // half-court viewBox 0 0 520 420, per the template standard
+
+function findBallHandlerId(phase) {
+  const withBall = (phase.playerPositions || []).find(pp => pp.hasBall);
+  return withBall ? withBall.playerId : null;
+}
+
+// Heuristic "passes away" ranking: not literal offense connectivity (this
+// renderer has no model of who actually passes to whom), but a reasonable
+// stand-in - order the 5 players by angle around the basket (their position
+// on the floor's perimeter/interior ring) and count hops from the ball
+// handler along that ring. 0 = has the ball, 1 = immediate neighbor either
+// direction (~standard "deny" distance), 2+ = everyone else ("help" distance).
+function passesAwayFromBall(startPositions, ballHandlerId) {
+  const ids = PLAY.players.map(p => p.id).filter(id => startPositions[id]);
+  const angleOf = (id) => {
+    const p = startPositions[id];
+    return Math.atan2(p.cy - BASKET.cy, p.cx - BASKET.cx);
+  };
+  const ring = ids.slice().sort((a, b) => angleOf(a) - angleOf(b));
+  const ballIdx = ring.indexOf(ballHandlerId);
+  const result = {};
+  ring.forEach((id, i) => {
+    if (ballIdx === -1) { result[id] = 1; return; } // no ball marked this phase - treat everyone as "one away"
+    const raw = Math.abs(i - ballIdx);
+    result[id] = Math.min(raw, ring.length - raw);
+  });
+  return result;
+}
+
+function normalize(dx, dy) {
+  const len = Math.hypot(dx, dy) || 0.0001;
+  return { ux: dx / len, uy: dy / len, len };
+}
+
+// Man-to-man defender placement. `intensity` ("passive" | "aggressive") is
+// the single knob agreed on for this pass - it drives on-ball tightness,
+// deny-lane tightness, AND help-rotation depth together, rather than three
+// separate settings.
+const MAN_GAPS = {
+  passive:    { onBall: 22, denyGap: 12, denyBallWeight: 0.30, helpGap: 20, helpBasketWeight: 0.65 },
+  aggressive: { onBall: 13, denyGap: 17, denyBallWeight: 0.45, helpGap: 34, helpBasketWeight: 0.80 }
+};
+
+function computeManDefensePositions(phase, startPositions) {
+  const intensity = (PLAY.defense && PLAY.defense.manIntensity) || 'passive';
+  const g = MAN_GAPS[intensity] || MAN_GAPS.passive;
+  const ballHandlerId = findBallHandlerId(phase);
+  const passesAway = passesAwayFromBall(startPositions, ballHandlerId);
+  const ballPos = ballHandlerId ? startPositions[ballHandlerId] : null;
+
+  return PLAY.players.map(pl => {
+    const manPos = startPositions[pl.id];
+    if (!manPos) return null;
+    const hop = passesAway[pl.id] || 0;
+
+    if (hop === 0) {
+      // On the ball: the man IS the ball handler, so there's no separate
+      // "ball line" to blend toward - just play tight, toward the basket.
+      const toBasket = normalize(BASKET.cx - manPos.cx, BASKET.cy - manPos.cy);
+      return { guardedId: pl.id, guardedNumber: pl.number,
+        cx: manPos.cx + toBasket.ux * g.onBall, cy: manPos.cy + toBasket.uy * g.onBall };
+    }
+
+    const toBasket = normalize(BASKET.cx - manPos.cx, BASKET.cy - manPos.cy);
+    const toBall = ballPos ? normalize(ballPos.cx - manPos.cx, ballPos.cy - manPos.cy) : toBasket;
+
+    if (hop === 1) {
+      // One pass away: deny stance - lean into the passing lane between the
+      // man and the ball, with a gap scaled by denyBallWeight.
+      const lx = toBasket.ux * (1 - g.denyBallWeight) + toBall.ux * g.denyBallWeight;
+      const ly = toBasket.uy * (1 - g.denyBallWeight) + toBall.uy * g.denyBallWeight;
+      const n = normalize(lx, ly);
+      return { guardedId: pl.id, guardedNumber: pl.number,
+        cx: manPos.cx + n.ux * g.denyGap, cy: manPos.cy + n.uy * g.denyGap };
+    }
+
+    // Two-plus passes away: help stance - sag off toward the basket/paint,
+    // shaded toward the ball side, at a much bigger gap than deny distance.
+    const hx = toBasket.ux * g.helpBasketWeight + toBall.ux * (1 - g.helpBasketWeight);
+    const hy = toBasket.uy * g.helpBasketWeight + toBall.uy * (1 - g.helpBasketWeight);
+    const n = normalize(hx, hy);
+    return { guardedId: pl.id, guardedNumber: pl.number,
+      cx: manPos.cx + n.ux * g.helpGap, cy: manPos.cy + n.uy * g.helpGap };
+  }).filter(Boolean);
+}
+
+// Zone base slots, one array per supported shape, in the same half-court
+// coordinate system as everything else (viewBox 0 0 520 420). These are a
+// first-pass placement using the template's documented reference points
+// (elbows ~y=285, top slots ~y=205, corners cx=58/462 cy=355, top of key
+// cx=260 cy=185) - worth validating visually against real film, not treated
+// as exact/final.
+const ZONE_BASE_SLOTS = {
+  '2-3':   [ {cx:180,cy:225}, {cx:340,cy:225}, {cx:110,cy:340}, {cx:260,cy:345}, {cx:410,cy:340} ],
+  '1-2-2': [ {cx:260,cy:200}, {cx:150,cy:280}, {cx:370,cy:280}, {cx:100,cy:355}, {cx:420,cy:355} ],
+  '3-2':   [ {cx:120,cy:230}, {cx:260,cy:210}, {cx:400,cy:230}, {cx:180,cy:335}, {cx:340,cy:335} ],
+  '2-1-2': [ {cx:180,cy:225}, {cx:340,cy:225}, {cx:260,cy:290}, {cx:150,cy:355}, {cx:370,cy:355} ],
+  '1-3-1': [ {cx:260,cy:200}, {cx:120,cy:280}, {cx:260,cy:285}, {cx:400,cy:280}, {cx:260,cy:355} ]
+};
+const ZONE_BALL_SHIFT = 0.28; // fraction of the way each slot slides toward the ball's side/depth
+
+function computeZoneDefensePositions(phase, startPositions) {
+  const shape = (PLAY.defense && PLAY.defense.zoneShape) || '2-3';
+  const slots = ZONE_BASE_SLOTS[shape] || ZONE_BASE_SLOTS['2-3'];
+  const ballHandlerId = findBallHandlerId(phase);
+  const ballPos = ballHandlerId ? startPositions[ballHandlerId] : null;
+  return slots.map((slot, i) => {
+    if (!ballPos) return { guardedNumber: null, slotIndex: i + 1, cx: slot.cx, cy: slot.cy };
+    const cx = slot.cx + (ballPos.cx - slot.cx) * ZONE_BALL_SHIFT;
+    const cy = slot.cy + (ballPos.cy - slot.cy) * ZONE_BALL_SHIFT;
+    return { guardedNumber: null, slotIndex: i + 1, cx, cy };
+  });
+}
+
+function computeDefensePositions(phase, startPositions) {
+  if (!PLAY.defense) return [];
+  if (PLAY.defense.scheme === 'zone') return computeZoneDefensePositions(phase, startPositions);
+  return computeManDefensePositions(phase, startPositions); // default to man
 }
 
 // ---- Resolve a screen's crossbar angle: perpendicular to the direction the
@@ -852,6 +998,28 @@ function renderCourt() {
     if (dragEnabled) attachDragHandlers(g, svg, posData, pos);
     svg.appendChild(g);
   });
+
+  // Defense overlay: auto-placed X markers, recomputed fresh every render
+  // from this phase's live offensive positions (see computeDefensePositions
+  // above for why). Never draggable this pass, per the earlier scoping.
+  if (showDefense && PLAY.defense) {
+    const defPositions = computeDefensePositions(phase, startPositions);
+    defPositions.forEach((d, i) => {
+      const subscript = d.guardedNumber != null ? d.guardedNumber : (d.slotIndex != null ? d.slotIndex : i + 1);
+      const g = svgEl('g', { class: 'defender' });
+      g.appendChild(svgEl('circle', { cx: d.cx, cy: d.cy, r: 8, fill: '#3a4250', stroke: '#8a97a6', 'stroke-width': 1.5 }));
+      const t = svgEl('text', {
+        x: d.cx, y: d.cy + 3.5, 'text-anchor': 'middle', fill: '#e6ebf1',
+        'font-family': 'Bebas Neue', 'font-size': 9, 'font-weight': 700
+      });
+      t.textContent = 'X';
+      const sub = svgEl('tspan', { 'font-size': 6, 'baseline-shift': '-25%' });
+      sub.textContent = String(subscript);
+      t.appendChild(sub);
+      g.appendChild(t);
+      svg.appendChild(g);
+    });
+  }
 
   // Footer caption bar
   svg.appendChild(svgEl('rect', { x: 32, y: 396, width: 456, height: 14, rx: 2, fill: 'rgba(0,0,0,.55)' }));
