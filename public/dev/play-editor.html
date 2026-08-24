@@ -621,8 +621,13 @@ function computeManDefensePositions(phase, startPositions) {
 // (elbows ~y=285, top slots ~y=205, corners cx=58/462 cy=355, top of key
 // cx=260 cy=185) - worth validating visually against real film, not treated
 // as exact/final.
+// Each slot can carry an explicit `num` (which X-label it gets) when the
+// shape has a real naming convention - per coach direction for 2-3: top row
+// is X1/X2, the back row of three is X3 (left wing), X5 (middle), X4 (right
+// wing). Shapes without an explicit `num` per slot just fall back to
+// left-to-right/top-to-bottom order (1..5) in computeZoneDefensePositions.
 const ZONE_BASE_SLOTS = {
-  '2-3':   [ {cx:180,cy:225}, {cx:340,cy:225}, {cx:110,cy:340}, {cx:260,cy:345}, {cx:410,cy:340} ],
+  '2-3':   [ {cx:180,cy:225,num:1}, {cx:340,cy:225,num:2}, {cx:110,cy:340,num:3}, {cx:260,cy:345,num:5}, {cx:410,cy:340,num:4} ],
   '1-2-2': [ {cx:260,cy:200}, {cx:150,cy:280}, {cx:370,cy:280}, {cx:100,cy:355}, {cx:420,cy:355} ],
   '3-2':   [ {cx:120,cy:230}, {cx:260,cy:210}, {cx:400,cy:230}, {cx:180,cy:335}, {cx:340,cy:335} ],
   '2-1-2': [ {cx:180,cy:225}, {cx:340,cy:225}, {cx:260,cy:290}, {cx:150,cy:355}, {cx:370,cy:355} ],
@@ -639,10 +644,11 @@ function computeZoneDefensePositions(phase, startPositions) {
   // otherwise a zone would visibly lag a phase behind a real rotation.
   const ballPos = getEffectiveBallPos(phase, startPositions, ballHandlerId);
   return slots.map((slot, i) => {
-    if (!ballPos) return { guardedNumber: null, slotIndex: i + 1, cx: slot.cx, cy: slot.cy };
+    const slotIndex = slot.num != null ? slot.num : i + 1;
+    if (!ballPos) return { guardedNumber: null, slotIndex, cx: slot.cx, cy: slot.cy };
     const cx = slot.cx + (ballPos.cx - slot.cx) * ZONE_BALL_SHIFT;
     const cy = slot.cy + (ballPos.cy - slot.cy) * ZONE_BALL_SHIFT;
-    return { guardedNumber: null, slotIndex: i + 1, cx, cy };
+    return { guardedNumber: null, slotIndex, cx, cy };
   });
 }
 
