@@ -531,9 +531,16 @@ function normalize(dx, dy) {
 // the single knob agreed on for this pass - it drives on-ball tightness,
 // deny-lane tightness, AND help-rotation depth together, rather than three
 // separate settings.
+//
+// deny/help distances are FRACTIONS of the guarded player's own distance to
+// the basket, not flat pixel gaps - a flat gap looked fine for a wing/elbow
+// player but left a corner player's help defender barely off the corner,
+// nowhere near the lane. Scaling by distance-to-basket means a corner
+// defender's bigger absolute gap still lands them near the same relative
+// spot (roughly straddling the key) as a closer player's smaller gap does.
 const MAN_GAPS = {
-  passive:    { onBall: 22, denyGap: 12, denyBallWeight: 0.30, helpGap: 20, helpBasketWeight: 0.65 },
-  aggressive: { onBall: 13, denyGap: 17, denyBallWeight: 0.45, helpGap: 34, helpBasketWeight: 0.80 }
+  passive:    { onBallGap: 20, onBallPerp: 14, denyFraction: 0.28, denyBallWeight: 0.30, helpFraction: 0.50, helpBallWeight: 0.15 },
+  aggressive: { onBallGap: 13, onBallPerp: 14, denyFraction: 0.38, denyBallWeight: 0.45, helpFraction: 0.65, helpBallWeight: 0.20 }
 };
 
 function computeManDefensePositions(phase, startPositions) {
@@ -547,35 +554,43 @@ function computeManDefensePositions(phase, startPositions) {
     const manPos = startPositions[pl.id];
     if (!manPos) return null;
     const hop = passesAway[pl.id] || 0;
+    const toBasket = normalize(BASKET.cx - manPos.cx, BASKET.cy - manPos.cy);
 
     if (hop === 0) {
-      // On the ball: the man IS the ball handler, so there's no separate
-      // "ball line" to blend toward - just play tight, toward the basket.
-      const toBasket = normalize(BASKET.cx - manPos.cx, BASKET.cy - manPos.cy);
+      // On the ball: the man IS the ball handler, so play tight toward the
+      // basket - but nudged perpendicular to that line too, so the marker
+      // doesn't sit directly on top of the ball dot (which the renderer
+      // always draws a fixed distance straight down from the player - for
+      // anyone near the top of the key, "toward the basket" is ALSO
+      // straight down, so without this nudge the two fully overlapped).
+      const perpX = -toBasket.uy, perpY = toBasket.ux;
       return { guardedId: pl.id, guardedNumber: pl.number,
-        cx: manPos.cx + toBasket.ux * g.onBall, cy: manPos.cy + toBasket.uy * g.onBall };
+        cx: manPos.cx + toBasket.ux * g.onBallGap + perpX * g.onBallPerp,
+        cy: manPos.cy + toBasket.uy * g.onBallGap + perpY * g.onBallPerp };
     }
 
-    const toBasket = normalize(BASKET.cx - manPos.cx, BASKET.cy - manPos.cy);
     const toBall = ballPos ? normalize(ballPos.cx - manPos.cx, ballPos.cy - manPos.cy) : toBasket;
+    const distToBasket = toBasket.len;
 
     if (hop === 1) {
       // One pass away: deny stance - lean into the passing lane between the
-      // man and the ball, with a gap scaled by denyBallWeight.
+      // man and the ball.
       const lx = toBasket.ux * (1 - g.denyBallWeight) + toBall.ux * g.denyBallWeight;
       const ly = toBasket.uy * (1 - g.denyBallWeight) + toBall.uy * g.denyBallWeight;
       const n = normalize(lx, ly);
+      const dist = distToBasket * g.denyFraction;
       return { guardedId: pl.id, guardedNumber: pl.number,
-        cx: manPos.cx + n.ux * g.denyGap, cy: manPos.cy + n.uy * g.denyGap };
+        cx: manPos.cx + n.ux * dist, cy: manPos.cy + n.uy * dist };
     }
 
-    // Two-plus passes away: help stance - sag off toward the basket/paint,
-    // shaded toward the ball side, at a much bigger gap than deny distance.
-    const hx = toBasket.ux * g.helpBasketWeight + toBall.ux * (1 - g.helpBasketWeight);
-    const hy = toBasket.uy * g.helpBasketWeight + toBall.uy * (1 - g.helpBasketWeight);
+    // Two-plus passes away: help stance - converge toward the help line
+    // (roughly straddling the lane/key), shaded toward the ball side.
+    const hx = toBasket.ux * (1 - g.helpBallWeight) + toBall.ux * g.helpBallWeight;
+    const hy = toBasket.uy * (1 - g.helpBallWeight) + toBall.uy * g.helpBallWeight;
     const n = normalize(hx, hy);
+    const dist = distToBasket * g.helpFraction;
     return { guardedId: pl.id, guardedNumber: pl.number,
-      cx: manPos.cx + n.ux * g.helpGap, cy: manPos.cy + n.uy * g.helpGap };
+      cx: manPos.cx + n.ux * dist, cy: manPos.cy + n.uy * dist };
   }).filter(Boolean);
 }
 
