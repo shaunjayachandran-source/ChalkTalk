@@ -915,7 +915,39 @@
       return { ok: false, error: `${name} was added, but their link failed to generate: ${linkErr.message}` };
     }
 
-    return { ok: true, name, token };
+    return { ok: true, name, token, email };  }
+
+    // Sends the "your playbook is ready" email to a newly-added team member,
+  // via /api/notify-team-member (Resend, not Supabase Auth -- team members
+  // never get a real Supabase account). Only called when an email address
+  // was actually provided. Never throws -- a failed send should never
+  // block showing the coach the manual copy-link fallback.
+  async function notifyTeamMemberByEmail({ name, email, token }) {
+    if (!email) return "no email on file";
+    const { data: session } = await supabase.auth.getSession();
+    const program = programs.find((p) => p.id === currentProgramId);
+    const link = `${window.location.origin}/my-playbook.html?token=${token}`;
+    try {
+      const res = await fetch("/api/notify-team-member", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.session.access_token}`,
+        },
+        body: JSON.stringify({
+          programId: currentProgramId,
+          programName: program?.name || null,
+          email,
+          name,
+          link,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) return `email failed: ${result.error || "unknown error"}`;
+      return "emailed";
+    } catch (err) {
+      return `email failed: ${err.message}`;
+    }
   }
 
   function showTokenReveal(entries) {
@@ -925,7 +957,7 @@
     reveal.innerHTML = `
       <strong>Copy and send ${entries.length > 1 ? "these links" : "this link"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
       Send each person their own link below — it's what gets them into their real playbook.<br/>
-      ${entries.map((e) => `<code>${e.name}: ${base}/my-playbook.html?token=${e.token}</code>`).join("<br/>")}
+      ${entries.map((e) => `<code>${e.name}: ${base}/my-playbook.html?token=${e.token}</code>${e.emailStatus ? ` <em>(${e.emailStatus})</em>` : ""}`).join("<br/>")}
     `;
   }
 
@@ -960,9 +992,10 @@
       return;
     }
 
-    nameInput.value = "";
+        nameInput.value = "";
     phoneInput.value = "";
     emailInput.value = "";
+    result.emailStatus = await notifyTeamMemberByEmail(result);
     showTokenReveal([result]);
     await loadMembers(currentProgramId);
   });
@@ -1097,9 +1130,13 @@
       }
 
       summary.textContent = `Adding ${successes.length + failures.length + 1} of ${totalRows}...`;
-      const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
-      if (result.ok) successes.push(result);
-      else failures.push(result.error);
+           const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
+            if (result.ok) {
+        result.emailStatus = await notifyTeamMemberByEmail(result);
+        successes.push(result);
+      } else {
+        failures.push(result.error);
+      }
     }
 
     summary.className = failures.length && !successes.length ? "error" : "";
