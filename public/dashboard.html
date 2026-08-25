@@ -1130,10 +1130,13 @@
       }
 
       summary.textContent = `Adding ${successes.length + failures.length + 1} of ${totalRows}...`;
-      const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
-      if (result.ok) successes.push(result);
-      else failures.push(result.error);
-    }
+           const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
+      if (result.ok) {
+        result.emailStatus = await notifyTeamMemberByEmail(result);
+        successes.push(result);
+      } else {
+        failures.push(result.error);
+      }
 
     summary.className = failures.length && !successes.length ? "error" : "";
     summary.innerHTML = `
