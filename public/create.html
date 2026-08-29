@@ -276,9 +276,10 @@
   <div class="subtitle">Check that player positions match what you had in mind before we build the full playbook.</div>
   <div id="phases-container"></div>
 
-  <div class="correction-box">
+   <div class="correction-box">
     <label for="correction">Something off? Add a correction note:</label>
     <textarea id="correction" placeholder="e.g. 3 should start in the corner, not the wing"></textarea>
+    <button type="button" class="btn-secondary" id="correctionMicBtn" style="margin-left:0; margin-top:10px;">🎤 Speak</button>
   </div>
 
   <div id="preview-error-box" style="display:none; background: rgba(224,58,46,0.12); border: 1px solid #e03a2e; color: #ff9b90; border-radius: 8px; padding: 12px; font-size: 13px; margin-top: 16px;"></div>
@@ -302,18 +303,24 @@
   const previewStatusBox = document.getElementById('preview-status-box');
   const analyzeBtn = document.getElementById('analyzeBtn');
     // --- voice input ---
-  const micBtn = document.getElementById('micBtn');
+    // --- voice input (reusable for any textarea) ---
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognizing = false, recognition, baseText = '';
 
-  if (!SR) {
-    micBtn.disabled = true;
-    micBtn.title = "Voice input isn't supported in this browser — please type.";
-  } else {
-    recognition = new SR();
+  function initVoiceInput(textareaId, buttonId) {
+    const btn = document.getElementById(buttonId);
+    if (!SR) {
+      btn.disabled = true;
+      btn.title = "Voice input isn't supported in this browser — please type.";
+      return;
+    }
+
+    const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+
+    let recognizing = false;
+    let baseText = '';
 
     recognition.onresult = (e) => {
       let interim = '', final = '';
@@ -321,27 +328,30 @@
         const t = e.results[i][0].transcript;
         e.results[i].isFinal ? (final += t) : (interim += t);
       }
-      document.getElementById('description').value =
-        (baseText + final).trim() + (interim ? ' ' + interim : '');
+      const textarea = document.getElementById(textareaId);
+      textarea.value = (baseText + final).trim() + (interim ? ' ' + interim : '');
       if (final) baseText += final;
     };
 
     recognition.onend = () => { if (recognizing) recognition.start(); };
 
-    micBtn.addEventListener('click', () => {
-      const desc = document.getElementById('description');
+    btn.addEventListener('click', () => {
+      const textarea = document.getElementById(textareaId);
       if (!recognizing) {
-        baseText = desc.value ? desc.value + ' ' : '';
+        baseText = textarea.value ? textarea.value + ' ' : '';
         recognition.start();
         recognizing = true;
-        micBtn.textContent = '⏹ Stop';
+        btn.textContent = '⏹ Stop';
       } else {
         recognizing = false;
         recognition.stop();
-        micBtn.textContent = '🎤 Speak';
+        btn.textContent = '🎤 Speak';
       }
     });
   }
+
+  initVoiceInput('description', 'micBtn');
+  initVoiceInput('correction', 'correctionMicBtn');
   const retryBtn = document.getElementById('retryBtn');
   const builderForm = document.getElementById('builder-form');
   const previewSection = document.getElementById('preview-section');
