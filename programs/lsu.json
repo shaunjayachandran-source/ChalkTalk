@@ -1,0 +1,20 @@
+{
+  "file_prefix": "lsu",
+  "title": "LSU Tigers",
+  "team_name": "LSU TIGERS",
+  "team_sub": "MEN&rsquo;S BASKETBALL &middot; <b>SEC</b>",
+  "hero_line": "Playbook hub for the LSU Tigers &mdash; built for coaches and players to see the same system explained at the depth each of them needs.",
+  "sign_accent": "BATON ROUGE&nbsp;&middot;&nbsp;PETE MARAVICH ASSEMBLY CENTER",
+  "coach_line": "Head Coach: <b>Will Wade</b>",
+  "crest_html": "<span>LSU</span>",
+  "accent_glow": "rgba(70,29,124,.35)",
+  "accent_crest": "linear-gradient(160deg,#5a2a94,#3a1560)",
+  "notes_text": "No plays have been built yet for this program. Pick a section below, or search above &mdash; each card fills in once Coach Wade&rsquo;s staff runs a play through <b>Intake Mode</b> (spoken description, uploaded diagram, or typed notes).",
+  "hero_mode": "photo",
+  "tagline": "LSU Tigers",
+  "hero_photo_file": "lsu-hero.jpg",
+  "hero_photo_alt": "Memorial Tower, Louisiana State University",
+  "hero_photo_credit": "Photo: Memorial Tower, LSU &mdash; Kkmurray, <a href=\"https://commons.wikimedia.org/wiki/File:Louisiana_State_University%27s_Memorial_Tower-2007.jpg\" target=\"_blank\" rel=\"noopener\">CC BY-SA 3.0</a>, via Wikimedia Commons",
+  "slug": "lsu",
+  "beta_status": "live"
+}

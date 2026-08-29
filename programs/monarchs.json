@@ -1,0 +1,18 @@
+{
+  "file_prefix": "monarchs",
+  "title": "Maryland Monarchs",
+  "team_name": "MARYLAND MONARCHS",
+  "team_sub": "WOMEN&rsquo;S BASKETBALL &middot; <b>WABA</b>",
+  "hero_line": "Playbook hub for the Maryland Monarchs &mdash; built for coaches and players to see the same system explained at the depth each of them needs.",
+  "sign_accent": "MARYLAND&nbsp;&middot;&nbsp;NORTH LOWER CONFERENCE",
+  "coach_line": "",
+  "crest_html": "<svg width=\"52\" height=\"52\" viewBox=\"0 0 100 100\" aria-label=\"Crown emblem\"><path d=\"M18 70 L24 34 L38 52 L50 26 L62 52 L76 34 L82 70 Z\" fill=\"#f0b429\"/><rect x=\"18\" y=\"70\" width=\"64\" height=\"9\" fill=\"#f0b429\"/><circle cx=\"24\" cy=\"34\" r=\"4\" fill=\"#ffffff\"/><circle cx=\"50\" cy=\"26\" r=\"4\" fill=\"#ffffff\"/><circle cx=\"76\" cy=\"34\" r=\"4\" fill=\"#ffffff\"/></svg>",
+  "accent_glow": "rgba(200,16,46,.3)",
+  "accent_crest": "linear-gradient(160deg,#c8102e,#1a1a1a)",
+  "hero_mode": "art",
+  "hero_art": "<svg viewBox=\"0 0 900 260\" preserveAspectRatio=\"xMidYMax slice\" xmlns=\"http://www.w3.org/2000/svg\"><g opacity=\"0.4\"><rect x=\"0\" y=\"0\" width=\"900\" height=\"130\" fill=\"#c8102e\"/><rect x=\"0\" y=\"130\" width=\"900\" height=\"130\" fill=\"#ffffff\" fill-opacity=\"0.85\"/><rect x=\"0\" y=\"0\" width=\"450\" height=\"260\" fill=\"#1a1a1a\"/><g fill=\"#f0b429\"><rect x=\"0\" y=\"0\" width=\"56\" height=\"43\"/><rect x=\"112\" y=\"0\" width=\"56\" height=\"43\"/><rect x=\"224\" y=\"0\" width=\"56\" height=\"43\"/><rect x=\"336\" y=\"0\" width=\"56\" height=\"43\"/><rect x=\"56\" y=\"43\" width=\"56\" height=\"43\"/><rect x=\"168\" y=\"43\" width=\"56\" height=\"43\"/><rect x=\"280\" y=\"43\" width=\"56\" height=\"43\"/><rect x=\"0\" y=\"87\" width=\"56\" height=\"43\"/><rect x=\"112\" y=\"87\" width=\"56\" height=\"43\"/><rect x=\"224\" y=\"87\" width=\"56\" height=\"43\"/><rect x=\"336\" y=\"87\" width=\"56\" height=\"43\"/><rect x=\"56\" y=\"130\" width=\"56\" height=\"43\"/><rect x=\"168\" y=\"130\" width=\"56\" height=\"43\"/><rect x=\"280\" y=\"130\" width=\"56\" height=\"43\"/><rect x=\"0\" y=\"173\" width=\"56\" height=\"43\"/><rect x=\"112\" y=\"173\" width=\"56\" height=\"43\"/><rect x=\"224\" y=\"173\" width=\"56\" height=\"43\"/><rect x=\"336\" y=\"173\" width=\"56\" height=\"43\"/><rect x=\"56\" y=\"217\" width=\"56\" height=\"43\"/><rect x=\"168\" y=\"217\" width=\"56\" height=\"43\"/><rect x=\"280\" y=\"217\" width=\"56\" height=\"43\"/></g></g><g transform=\"translate(640,60)\"><path d=\"M0 90 L15 20 L45 60 L75 10 L105 60 L135 20 L150 90 Z\" fill=\"#f0b429\" fill-opacity=\"0.85\"/><rect x=\"0\" y=\"90\" width=\"150\" height=\"16\" fill=\"#f0b429\" fill-opacity=\"0.85\"/><circle cx=\"15\" cy=\"20\" r=\"7\" fill=\"#ffffff\" fill-opacity=\"0.85\"/><circle cx=\"75\" cy=\"10\" r=\"7\" fill=\"#ffffff\" fill-opacity=\"0.85\"/><circle cx=\"135\" cy=\"20\" r=\"7\" fill=\"#ffffff\" fill-opacity=\"0.85\"/></g><rect x=\"0\" y=\"230\" width=\"900\" height=\"30\" fill=\"#140505\" fill-opacity=\"0.7\"/><g transform=\"translate(430,190)\" stroke=\"#f0b429\" stroke-width=\"2.5\" fill=\"none\" opacity=\"0.55\"><line x1=\"0\" y1=\"0\" x2=\"0\" y2=\"45\"/><rect x=\"-22\" y=\"0\" width=\"44\" height=\"24\"/><ellipse cx=\"0\" cy=\"27\" rx=\"18\" ry=\"5\"/></g></svg>",
+  "notes_text": "No plays have been built yet for this program. Pick a section below, or search above &mdash; each card fills in once the coaching staff runs a play through <b>Intake Mode</b> (spoken description, uploaded diagram, or typed notes).",
+  "tagline": "Maryland Monarchs",
+  "slug": "monarchs",
+  "beta_status": "beta"
+}
