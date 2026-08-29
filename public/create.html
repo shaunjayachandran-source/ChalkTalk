@@ -301,6 +301,47 @@
   const statusBox = document.getElementById('status-box');
   const previewStatusBox = document.getElementById('preview-status-box');
   const analyzeBtn = document.getElementById('analyzeBtn');
+    // --- voice input ---
+  const micBtn = document.getElementById('micBtn');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognizing = false, recognition, baseText = '';
+
+  if (!SR) {
+    micBtn.disabled = true;
+    micBtn.title = "Voice input isn't supported in this browser — please type.";
+  } else {
+    recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (e) => {
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        e.results[i].isFinal ? (final += t) : (interim += t);
+      }
+      document.getElementById('description').value =
+        (baseText + final).trim() + (interim ? ' ' + interim : '');
+      if (final) baseText += final;
+    };
+
+    recognition.onend = () => { if (recognizing) recognition.start(); };
+
+    micBtn.addEventListener('click', () => {
+      const desc = document.getElementById('description');
+      if (!recognizing) {
+        baseText = desc.value ? desc.value + ' ' : '';
+        recognition.start();
+        recognizing = true;
+        micBtn.textContent = '⏹ Stop';
+      } else {
+        recognizing = false;
+        recognition.stop();
+        micBtn.textContent = '🎤 Speak';
+      }
+    });
+  }
   const retryBtn = document.getElementById('retryBtn');
   const builderForm = document.getElementById('builder-form');
   const previewSection = document.getElementById('preview-section');
