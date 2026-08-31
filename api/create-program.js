@@ -7,24 +7,29 @@
  *      Trusted immediately: commits programs/<slug>.json straight to a
  *      new feature branch (feature/new-program-<slug>-<timestamp>), the
  *      same "feature branch -> preview -> manual merge" habit already
- *      used for every other change in this project. Nothing goes live
- *      until Shaun reviews the diff and merges it himself.
+ *      used for every other change in this project, AND provisions the
+ *      real Supabase side (programs row, optionally a real invited head
+ *      coach) immediately -- see api/_lib/provision-program.js. Nothing
+ *      about the static page goes live until Shaun merges the branch,
+ *      but the real account is created right away since this path is
+ *      already fully trusted.
  *
  *   2. The beta-signup Google Form's Apps Script trigger -- body.formSecret
  *      matching FORM_SHARED_SECRET instead of an admin token. NOT trusted
- *      to touch a real branch: this instead commits the same JSON to
- *      programs/_pending/<slug>.json on a long-lived `programs-pending`
- *      branch that is never built or merged. It just sits there as
- *      durable storage until an admin clicks Approve or Reject in
- *      admin.html (see api/approve-program.js / api/reject-program.js).
- *      A form submission can *never* reach a real branch on its own --
- *      that only happens via the approve endpoint, which requires the
- *      admin token.
+ *      to touch a real branch OR provision anything real: this instead
+ *      commits the same JSON to programs/_pending/<slug>.json on a
+ *      long-lived `programs-pending` branch that is never built or
+ *      merged. It just sits there as durable storage until an admin
+ *      clicks Approve or Reject in admin.html (see api/approve-program.js
+ *      / api/reject-program.js) -- approval is what actually creates the
+ *      branch AND provisions Supabase, including sending the coach their
+ *      real login invite. A form submission can *never* reach either on
+ *      its own.
  *
  * Body (same shape for both paths):
  *   {
- *     slug, title, team_name, team_sub, league, coach_line, tagline,
- *     sign_accent, hero_line, primary_color ("#rrggbb"), initials,
+ *     slug, title, team_name, team_sub, league, coach_line, coach_email,
+ *     tagline, sign_accent, hero_line, primary_color ("#rrggbb"), initials,
  *     beta_status ("beta"|"live"), formSecret?
  *   }
  *
@@ -45,6 +50,7 @@ import {
   compareUrl,
 } from "./_lib/github-repo.js";
 import { validateAdminToken } from "./_lib/validate-admin.js";
+import { provisionProgram } from "./_lib/provision-program.js";
 
 const PENDING_BRANCH = "programs-pending";
 const REQUIRED_FIELDS = ["slug", "title", "team_name"];
@@ -82,8 +88,11 @@ function buildProgramConfig(body) {
   const title = String(body.title || "").trim();
   const teamName = String(body.team_name || title).trim().toUpperCase();
   const primaryColor = HEX_COLOR_RE.test(body.primary_color || "") ? body.primary_color : "#f0b429";
+  const secondaryColor = shade(primaryColor, -60);
   const initials = String(body.initials || teamName.slice(0, 3)).trim().toUpperCase().slice(0, 4);
   const betaStatus = body.beta_status === "live" ? "live" : "beta";
+  const coachName = String(body.coach_line || "").trim();
+  const coachEmail = String(body.coach_email || "").trim();
 
   return {
     slug,
@@ -95,10 +104,17 @@ function buildProgramConfig(body) {
       escapeHtml(body.hero_line) ||
       `Playbook hub for ${escapeHtml(title)} &mdash; built for coaches and players to see the same system explained at the depth each of them needs.`,
     sign_accent: escapeHtml(body.sign_accent || ""),
-    coach_line: body.coach_line ? `Head Coach: <b>${escapeHtml(body.coach_line)}</b>` : "",
+    coach_line: coachName ? `Head Coach: <b>${escapeHtml(coachName)}</b>` : "",
+    // Raw (non-HTML) copies, used only for Supabase provisioning below --
+    // never rendered directly by build_site.py.
+    coach_name: coachName || null,
+    coach_email: coachEmail || null,
     crest_html: `<span>${escapeHtml(initials)}</span>`,
     accent_glow: hexToRgba(primaryColor, 0.35),
-    accent_crest: `linear-gradient(160deg,${primaryColor},${shade(primaryColor, -60)})`,
+    accent_crest: `linear-gradient(160deg,${primaryColor},${secondaryColor})`,
+    color_primary: primaryColor,
+    color_secondary: secondaryColor,
+    crest_label: initials,
     notes_text:
       "No plays have been built yet for this program. Pick a section below, or search above " +
       "&mdash; each card fills in once this staff runs a play through <b>Intake Mode</b> " +
@@ -158,11 +174,43 @@ export default async function handler(req, res) {
         jsonText,
         `Add new program config: ${slug}`
       );
+
+      // Real Supabase provisioning -- this is what makes the program
+      // actually usable (real programs row, optionally a real invited
+      // head coach), separate from the static marketing hub page the
+      // branch/JSON above produces. Trusted immediately here because this
+      // is the admin path; see api/approve-program.js for why the form
+      // path defers this until an explicit approval click.
+      let provision = null;
+      try {
+        provision = await provisionProgram({
+          slug,
+          name: programConfig.title,
+          coachEmail: programConfig.coach_email,
+          coachName: programConfig.coach_name,
+          colorPrimary: programConfig.color_primary,
+          colorSecondary: programConfig.color_secondary,
+          crestLabel: programConfig.crest_label,
+        });
+      } catch (provisionErr) {
+        console.error("[create-program] provisioning failed", provisionErr.message);
+        return sendJson(res, 200, {
+          ok: true,
+          pending: false,
+          branch,
+          compareUrl: compareUrl(branch),
+          provisionError: `Page config committed, but Supabase provisioning failed: ${provisionErr.message}`,
+        });
+      }
+
       return sendJson(res, 200, {
         ok: true,
         pending: false,
         branch,
         compareUrl: compareUrl(branch),
+        programId: provision.programId,
+        coachInvited: provision.coachInvited,
+        coachError: provision.coachError,
       });
     }
 
