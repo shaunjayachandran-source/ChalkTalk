@@ -256,9 +256,10 @@
             provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.provisionError) + '</strong>';
           } else if(result.coachInvited){
             provisionLine = '<br>Real program created in Supabase, and the coach has been emailed a login invite.';
-          } else if(result.programId){
-            provisionLine = '<br>Real program created in Supabase (no coach email on file, so no invite was sent).';
-            if(result.coachError) provisionLine += '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
+          } else if(result.skipped){
+            provisionLine = '<br>No coach email was on this request, so no Supabase program was created yet -- only the static page.';
+          } else if(result.coachError){
+            provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
           } else {
             provisionLine = '';
           }
