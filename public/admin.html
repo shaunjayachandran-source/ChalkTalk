@@ -83,6 +83,9 @@
       <label>Head coach name</label>
       <input type="text" name="coach_line" placeholder="e.g. Shaun Jayachandran">
 
+      <label>Head coach email (invites a real coach account &mdash; leave blank to create the page only)</label>
+      <input type="text" name="coach_email" placeholder="coach@example.com">
+
       <label>Location line</label>
       <input type="text" name="sign_accent" placeholder="e.g. CHENNAI, INDIA">
 
@@ -181,9 +184,21 @@
 
     apiCall('/api/create-program', { method: 'POST', body: JSON.stringify(body) })
       .then(function(result){
+        var provisionLine;
+        if(result.provisionError){
+          provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.provisionError) + '</strong>';
+        } else if(result.coachInvited){
+          provisionLine = '<br>Real program created in Supabase, and the coach has been emailed a login invite.';
+        } else if(result.programId){
+          provisionLine = '<br>Real program created in Supabase (no coach email given, so no invite was sent -- use Invite Coach from the dashboard when ready).';
+          if(result.coachError) provisionLine += '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
+        } else {
+          provisionLine = '';
+        }
         msg.innerHTML = '<div class="msg ok">Created on branch <code>' + escapeHtml(result.branch) +
           '</code>. <a href="' + result.compareUrl + '" target="_blank" rel="noopener">Open compare &amp; PR &rarr;</a><br>' +
-          'The build-programs Action will generate the hub/section HTML on that branch automatically -- give it a minute, then check Vercel for the preview URL before merging.</div>';
+          'The build-programs Action will generate the hub/section HTML on that branch automatically -- give it a minute, then check Vercel for the preview URL before merging.' +
+          provisionLine + '</div>';
         form.reset();
       })
       .catch(function(err){
@@ -235,8 +250,19 @@
         body: JSON.stringify({ slug: slug }),
       }).then(function(result){
         if(isApprove){
+          var provisionLine;
+          if(result.provisionError){
+            provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.provisionError) + '</strong>';
+          } else if(result.coachInvited){
+            provisionLine = '<br>Real program created in Supabase, and the coach has been emailed a login invite.';
+          } else if(result.programId){
+            provisionLine = '<br>Real program created in Supabase (no coach email on file, so no invite was sent).';
+            if(result.coachError) provisionLine += '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
+          } else {
+            provisionLine = '';
+          }
           resultEl.innerHTML = '<div class="msg ok">Approved &mdash; branch <code>' + escapeHtml(result.branch) +
-            '</code>. <a href="' + result.compareUrl + '" target="_blank" rel="noopener">Open compare &amp; PR &rarr;</a></div>';
+            '</code>. <a href="' + result.compareUrl + '" target="_blank" rel="noopener">Open compare &amp; PR &rarr;</a>' + provisionLine + '</div>';
         } else {
           resultEl.innerHTML = '<div class="msg ok">Rejected.</div>';
         }
