@@ -9,9 +9,14 @@
  *
  * Steps: read programs/_pending/<slug>.json off `programs-pending`, copy
  * its content verbatim onto a new feature/new-program-<slug>-<timestamp>
- * branch off main (same shape as the direct-admin path), then remove the
- * file from programs-pending so it doesn't show up as still-pending.
- * From here it's the same manual review/merge as any other change.
+ * branch off main (same shape as the direct-admin path), remove the file
+ * from programs-pending so it doesn't show up as still-pending, and THEN
+ * -- only now, only on explicit approval -- provision the real Supabase
+ * side (programs row + coach invite, see api/_lib/provision-program.js).
+ * That ordering is the whole point: a form submission sits inert with no
+ * real branch and no real coach invite until this endpoint runs, so
+ * nobody's inbox gets a login email before Shaun has actually looked at
+ * the request.
  */
 
 import {
@@ -23,6 +28,7 @@ import {
   compareUrl,
 } from "./_lib/github-repo.js";
 import { validateAdminToken } from "./_lib/validate-admin.js";
+import { provisionProgram } from "./_lib/provision-program.js";
 
 const PENDING_BRANCH = "programs-pending";
 
@@ -78,7 +84,45 @@ export default async function handler(req, res) {
       `Approved: remove pending request ${slug}`
     );
 
-    return sendJson(res, 200, { ok: true, branch, compareUrl: compareUrl(branch) });
+    let programConfig;
+    try {
+      programConfig = JSON.parse(pendingFile.content);
+    } catch (parseErr) {
+      return sendJson(res, 200, {
+        ok: true,
+        branch,
+        compareUrl: compareUrl(branch),
+        provisionError: `Page config approved, but couldn't parse it to provision Supabase: ${parseErr.message}`,
+      });
+    }
+
+    try {
+      const provision = await provisionProgram({
+        slug,
+        name: programConfig.title,
+        coachEmail: programConfig.coach_email,
+        coachName: programConfig.coach_name,
+        colorPrimary: programConfig.color_primary,
+        colorSecondary: programConfig.color_secondary,
+        crestLabel: programConfig.crest_label,
+      });
+      return sendJson(res, 200, {
+        ok: true,
+        branch,
+        compareUrl: compareUrl(branch),
+        programId: provision.programId,
+        coachInvited: provision.coachInvited,
+        coachError: provision.coachError,
+      });
+    } catch (provisionErr) {
+      console.error("[approve-program] provisioning failed", provisionErr.message);
+      return sendJson(res, 200, {
+        ok: true,
+        branch,
+        compareUrl: compareUrl(branch),
+        provisionError: `Page config approved, but Supabase provisioning failed: ${provisionErr.message}`,
+      });
+    }
   } catch (err) {
     console.error("[approve-program]", err.message);
     return sendJson(res, 502, { error: `Couldn't approve '${slug}': ${err.message}` });
