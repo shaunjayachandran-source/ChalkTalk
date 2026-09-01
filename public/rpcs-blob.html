@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPCS Reds &mdash; ChalkTalk Playbook</title>
+<style>
+:root{ --accent-glow:rgba(200,16,46,.35); --accent-crest:linear-gradient(160deg,#c8102e,#6e0d1b); }
+
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg:#0d1017;
+    --bg-raised:#141a24;
+    --card:#161c27;
+    --line:#232b38;
+    --gold:#f0b429;
+    --gold-soft:#f7cf6a;
+    --teal:#1abc9c;
+    --ember:#ff5a3c;
+    --text:#eef1f6;
+    --dim:#8b93a3;
+    --dim2:#5c6472;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'DM Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  a{color:inherit;text-decoration:none;}
+
+  .eyebrow{
+    font-family:'DM Mono',monospace;
+    letter-spacing:.22em;
+    text-transform:uppercase;
+    font-size:.68rem;
+    color:var(--gold);
+  }
+
+  /* ---------- HERO (hub page only) ---------- */
+  .hero{
+    position:relative;
+    min-height:56vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-end;
+    padding:48px 24px 40px;
+    overflow:hidden;
+    border-bottom:1px solid var(--line);
+  }
+  .hero-tex{
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 15%, var(--accent-glow), transparent 70%),
+      radial-gradient(ellipse 80% 60% at 50% 100%, rgba(240,180,41,.06), transparent 70%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,.015) 0 2px, transparent 2px 34px);
+  }
+  .hero-fade{
+    position:absolute;
+    inset:0;
+    background:linear-gradient(180deg, rgba(13,16,23,.35) 0%, rgba(13,16,23,.55) 35%, rgba(13,16,23,.72) 65%, var(--bg) 96%);
+  }
+  .hero-photo{
+    position:absolute;
+    inset:0;
+    overflow:hidden;
+  }
+  .hero-photo img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    object-position:center 20%;
+    display:block;
+    filter:brightness(.5) saturate(1.15);
+  }
+  .hero-art{
+    position:absolute;
+    inset:0;
+    overflow:hidden;
+  }
+  .hero-art svg{
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .photo-credit{
+    position:absolute;
+    right:14px;
+    bottom:10px;
+    z-index:3;
+    font-family:'DM Mono',monospace;
+    font-size:.6rem;
+    letter-spacing:.04em;
+    color:rgba(238,241,246,.45);
+    text-shadow:0 1px 3px rgba(0,0,0,.6);
+  }
+  .photo-credit a{color:rgba(238,241,246,.6);text-decoration:underline;}
+  .hero-inner{
+    position:relative;
+    z-index:2;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+    gap:14px;
+    width:100%;
+  }
+  .crest{
+    width:88px;
+    height:88px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--accent-crest);
+    border:2px solid var(--gold);
+    box-shadow:0 0 0 5px rgba(240,180,41,.08), 0 10px 30px rgba(0,0,0,.5);
+    animation:riseIn 1.1s ease-out both;
+  }
+  .crest span{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:2rem;
+    letter-spacing:.02em;
+    color:var(--gold-soft);
+  }
+  .team-name{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:clamp(2.4rem,7.5vw,4.4rem);
+    line-height:.92;
+    letter-spacing:.02em;
+    background:linear-gradient(180deg,#fff, var(--gold-soft) 70%, var(--gold));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    filter:drop-shadow(0 2px 10px rgba(0,0,0,.65));
+    animation:riseIn 1.1s .1s ease-out both;
+  }
+  .team-sub{
+    font-family:'DM Mono',monospace;
+    letter-spacing:.32em;
+    text-transform:uppercase;
+    font-size:.76rem;
+    color:var(--dim);
+    animation:riseIn 1.1s .2s ease-out both;
+  }
+  .team-sub b{color:var(--teal);font-weight:500;}
+  .hero-line{
+    margin-top:4px;
+    max-width:540px;
+    color:var(--dim);
+    font-size:.9rem;
+    line-height:1.5;
+    animation:riseIn 1.1s .3s ease-out both;
+  }
+  @keyframes riseIn{
+    from{opacity:0; transform:translateY(14px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  .sign-accent{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin-top:14px;
+    padding:6px 14px;
+    border:1px solid rgba(240,180,41,.4);
+    border-radius:3px;
+    background:rgba(240,180,41,.06);
+    font-family:'DM Mono',monospace;
+    font-size:.66rem;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--gold-soft);
+    animation:riseIn 1.1s .4s ease-out both;
+  }
+  .sign-accent i{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--gold);
+    box-shadow:0 0 8px var(--gold);
+  }
+  .coach-line{
+    margin-top:10px;
+    font-family:'DM Mono',monospace;
+    font-size:.66rem;
+    letter-spacing:.1em;
+    color:var(--dim2);
+    animation:riseIn 1.1s .45s ease-out both;
+  }
+  .coach-line b{color:var(--dim);font-weight:500;}
+  .beta-pill{
+    display:inline-block;
+    margin-top:10px;
+    padding:3px 10px;
+    border-radius:12px;
+    font-family:'DM Mono',monospace;
+    font-size:.6rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    border:1px solid rgba(26,188,156,.4);
+    background:rgba(26,188,156,.08);
+    color:var(--teal);
+  }
+
+  /* ---------- SEARCH ---------- */
+  .search-wrap{
+    position:relative;
+    width:100%;
+    max-width:520px;
+    margin:22px auto 0;
+    z-index:5;
+  }
+  .search-wrap input{
+    width:100%;
+    background:var(--bg-raised);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:13px 20px;
+    color:var(--text);
+    font-family:'DM Sans',sans-serif;
+    font-size:.9rem;
+    outline:none;
+    transition:border-color .2s ease, box-shadow .2s ease;
+  }
+  .search-wrap input::placeholder{color:var(--dim2);}
+  .search-wrap input:focus{
+    border-color:var(--gold);
+    box-shadow:0 0 0 3px rgba(240,180,41,.12);
+  }
+  .search-results{
+    display:none;
+    position:absolute;
+    top:calc(100% + 8px);
+    left:0;
+    right:0;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    box-shadow:0 16px 40px rgba(0,0,0,.5);
+    max-height:320px;
+    overflow-y:auto;
+  }
+  .search-results.open{display:block;}
+  .search-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:11px 16px;
+    border-bottom:1px solid var(--line);
+    text-align:left;
+    color:var(--text);
+    font-size:.84rem;
+  }
+  .search-row:last-child{border-bottom:none;}
+  .search-row:hover, .search-row.active{background:rgba(240,180,41,.08);}
+  .search-row mark{
+    background:none;
+    color:var(--gold);
+    font-weight:600;
+  }
+  .search-row .sr-path{
+    font-family:'DM Mono',monospace;
+    font-size:.62rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--dim2);
+    white-space:nowrap;
+  }
+  .search-empty{
+    padding:14px 16px;
+    font-size:.8rem;
+    color:var(--dim2);
+    line-height:1.5;
+  }
+
+  /* ---------- BREADCRUMB / PAGE HEADER (section pages) ---------- */
+  .page-header{
+    max-width:1180px;
+    margin:0 auto;
+    padding:26px 28px 18px;
+  }
+  .home-link{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-family:'DM Mono',monospace;
+    font-size:.68rem;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--dim);
+    margin-bottom:16px;
+  }
+  .home-link:hover{color:var(--gold-soft);}
+  .page-title-row{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px 20px;
+  }
+  .page-title-row h1{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:clamp(2.2rem,6vw,3.2rem);
+    letter-spacing:.02em;
+  }
+  .page-title-row .team-tag{
+    font-family:'DM Mono',monospace;
+    font-size:.68rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--dim2);
+  }
+
+  /* ---------- PAGE NAV (sibling section pages) ---------- */
+  .section-nav{
+    position:sticky;
+    top:0;
+    z-index:10;
+    display:flex;
+    justify-content:center;
+    gap:6px;
+    padding:14px 16px;
+    background:rgba(13,16,23,.86);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  .section-nav a{
+    font-family:'DM Mono',monospace;
+    font-size:.72rem;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--dim);
+    padding:8px 16px;
+    border-radius:20px;
+    border:1px solid transparent;
+    transition:color .2s ease, border-color .2s ease, background .2s ease;
+  }
+  .section-nav a:hover{color:var(--text);}
+  .section-nav a.active{
+    color:var(--gold);
+    border-color:rgba(240,180,41,.35);
+    background:rgba(240,180,41,.06);
+  }
+
+  /* ---------- SECTIONS ---------- */
+  .section{
+    max-width:1180px;
+    margin:0 auto;
+    padding:36px 28px 24px;
+  }
+  .section-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px 24px;
+    margin-bottom:30px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+  }
+  .section-head h2{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:2.6rem;
+    letter-spacing:.03em;
+  }
+  .section-head p{
+    font-family:'DM Mono',monospace;
+    font-size:.72rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--dim2);
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:16px;
+  }
+  .grid + .subhead{margin-top:34px;}
+
+  .subhead{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:'DM Mono',monospace;
+    font-size:.7rem;
+    font-weight:500;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--teal);
+    margin:0 0 14px;
+  }
+  .subhead::after{
+    content:'';
+    flex:1;
+    height:1px;
+    background:var(--line);
+  }
+
+  /* ---------- Ghost / empty-state card ---------- */
+  .card.ghost{
+    position:relative;
+    border:1px dashed #2c3646;
+    border-left:1px dashed #2c3646;
+    background:transparent;
+    border-radius:6px;
+    padding:20px 20px 18px;
+    min-height:150px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    color:var(--dim2);
+    cursor:default;
+    scroll-margin-top:90px;
+    transition:border-color .3s ease, background .3s ease;
+  }
+  .card.ghost:hover{
+    border-color:var(--gold);
+    color:var(--gold-soft);
+    background:rgba(240,180,41,.04);
+  }
+  .card.ghost.flash{
+    border-color:var(--gold);
+    background:rgba(240,180,41,.1);
+    box-shadow:0 0 0 3px rgba(240,180,41,.18);
+  }
+  .card.ghost .plus{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:2.2rem;
+    line-height:1;
+  }
+  .card.ghost .ghost-label{
+    font-family:'DM Mono',monospace;
+    font-size:.68rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    margin-top:6px;
+  }
+  .card.ghost .ghost-hint{
+    font-size:.76rem;
+    color:var(--dim2);
+    margin-top:8px;
+    max-width:210px;
+    line-height:1.4;
+  }
+
+  /* ---------- Section link cards (hub page) ---------- */
+  .link-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+    gap:16px;
+    max-width:1180px;
+    margin:40px auto 0;
+    padding:0 28px;
+  }
+  .link-card{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    padding:22px 20px;
+    border:1px solid var(--line);
+    border-left:3px solid var(--teal);
+    border-radius:8px;
+    background:var(--card);
+    transition:border-color .2s ease, transform .2s ease, background .2s ease;
+  }
+  .link-card:hover{
+    border-color:var(--gold);
+    border-left-color:var(--gold);
+    background:#181f2c;
+    transform:translateY(-2px);
+  }
+  .link-card .lc-title{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:1.7rem;
+    letter-spacing:.02em;
+  }
+  .link-card .lc-desc{
+    font-size:.82rem;
+    color:var(--dim);
+    line-height:1.45;
+  }
+  .link-card .lc-count{
+    margin-top:6px;
+    font-family:'DM Mono',monospace;
+    font-size:.64rem;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--dim2);
+  }
+
+  /* ---------- Notes panel ---------- */
+  .notes{
+    max-width:1180px;
+    margin:0 auto;
+    padding:8px 28px 0;
+  }
+  .notes .box{
+    border:1px solid var(--line);
+    border-left:3px solid var(--teal);
+    background:var(--card);
+    border-radius:6px;
+    padding:18px 20px;
+    font-size:.86rem;
+    line-height:1.6;
+    color:var(--dim);
+  }
+  .notes .box b{color:var(--text);}
+  .notes .box .tag2{
+    font-family:'DM Mono',monospace;
+    font-size:.62rem;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--teal);
+    display:block;
+    margin-bottom:8px;
+  }
+
+  /* ---------- FOOTER ---------- */
+  footer{
+    margin-top:60px;
+    padding:36px 28px 60px;
+    border-top:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    text-align:center;
+  }
+  footer .mark{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:1.1rem;
+    letter-spacing:.08em;
+    color:var(--dim);
+  }
+  footer .mark b{color:var(--gold);}
+  footer .tagline{
+    font-family:'DM Mono',monospace;
+    font-size:.66rem;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--dim2);
+  }
+
+  @media (max-width:560px){
+    .section{padding:28px 18px 16px;}
+    .section-nav{gap:2px;padding:10px;}
+    .section-nav a{padding:7px 10px;font-size:.64rem;}
+    .page-header{padding:20px 18px 14px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important; transition:none !important;}
+  }
+
+</style>
+
+<script>
+window.CHALK_PLAYS = [
+  {id:'o-man-ballscreen', label:'Ball-Screen Set', hint:'Pick-and-roll entries, downhill reads, pop/short-roll counters.', section:'Offense', sub:'Man', href:'rpcs-offense.html#o-man-ballscreen'},
+  {id:'o-man-motion', label:'Motion / Spacing Set', hint:'5-out or 4-out spacing rules, drive-and-kick, relocate reads.', section:'Offense', sub:'Man', href:'rpcs-offense.html#o-man-motion'},
+  {id:'o-man-quick', label:'Quick Hitter', hint:'Numbered call for a direct entry into a primary scoring option.', section:'Offense', sub:'Man', href:'rpcs-offense.html#o-man-quick'},
+  {id:'o-man-transition', label:'Transition Rule', hint:'Push-ahead lanes, trailer spacing, early offense reads.', section:'Offense', sub:'Man', href:'rpcs-offense.html#o-man-transition'},
+  {id:'o-zone-overload', label:'Zone Attack - Overload', hint:'Overload one side of a 2-3 or 3-2 zone to collapse a gap.', section:'Offense', sub:'Zone', href:'rpcs-offense.html#o-zone-overload'},
+  {id:'o-zone-highlow', label:'Zone Attack - High-Low', hint:"Two-post high-low read against a zone's back line.", section:'Offense', sub:'Zone', href:'rpcs-offense.html#o-zone-highlow'},
+  {id:'o-zone-gapskip', label:'Zone Attack - Gap/Skip', hint:'Find seams and skip passes to shooters before the zone rotates.', section:'Offense', sub:'Zone', href:'rpcs-offense.html#o-zone-gapskip'},
+  {id:'o-pb-man', label:'Man Press Break', hint:'Outlet and advance rules against man-to-man full-court pressure.', section:'Offense', sub:'Press Break', href:'rpcs-offense.html#o-pb-man'},
+  {id:'o-pb-zone', label:'Zone Press Break', hint:'Structured spacing to beat a 1-2-1-1 or 2-2-1 zone trap.', section:'Offense', sub:'Press Break', href:'rpcs-offense.html#o-pb-zone'},
+  {id:'d-man-base', label:'Man Defense Set', hint:'Base man principles, help-side rotations, closeouts.', section:'Defense', sub:'Man', href:'rpcs-defense.html#d-man-base'},
+  {id:'d-man-coverage', label:'Ball-Screen Coverage', hint:'Show, drop, or switch coverage rules for on-ball screens.', section:'Defense', sub:'Man', href:'rpcs-defense.html#d-man-coverage'},
+  {id:'d-man-switch', label:'Switching Rule', hint:'Man-to-man switching triggers and mismatch-hunting counters.', section:'Defense', sub:'Man', href:'rpcs-defense.html#d-man-switch'},
+  {id:'d-zone-23', label:'2-3 Zone', hint:'Base 2-3 shell, rotations, and gap-help rules.', section:'Defense', sub:'Zone', href:'rpcs-defense.html#d-zone-23'},
+  {id:'d-zone-32', label:'3-2 Zone', hint:'Perimeter-heavy zone look to pressure the three-point line.', section:'Defense', sub:'Zone', href:'rpcs-defense.html#d-zone-32'},
+  {id:'d-zone-matchup', label:'Matchup Zone', hint:'Man principles inside a zone shell - assignment rules by area.', section:'Defense', sub:'Zone', href:'rpcs-defense.html#d-zone-matchup'},
+  {id:'d-press-full', label:'Full-Court Press', hint:'Trap points, rotation, and containment for a full-court man or zone press.', section:'Defense', sub:'Press', href:'rpcs-defense.html#d-press-full'},
+  {id:'d-press-34', label:'Three-Quarter Press', hint:'Pressure applied from the frontcourt sideline in.', section:'Defense', sub:'Press', href:'rpcs-defense.html#d-press-34'},
+  {id:'d-press-trap', label:'Half-Court Trap', hint:'Change-of-pace trap triggered off a sideline or corner catch.', section:'Defense', sub:'Press', href:'rpcs-defense.html#d-press-trap'},
+  {id:'slob-play', label:'SLOB Play', hint:'First sideline call - screen action to spring the primary option.', section:'SLOB', sub:'', href:'rpcs-slob.html#slob-play'},
+  {id:'slob-counter', label:'SLOB Counter', hint:'Direct-entry variation for when the first look is scouted.', section:'SLOB', sub:'', href:'rpcs-slob.html#slob-counter'},
+  {id:'blob-play', label:'BLOB Play', hint:'Staggered screen action off the baseline for a shooter or rim finish.', section:'BLOB', sub:'', href:'rpcs-blob.html#blob-play'},
+  {id:'blob-special', label:'BLOB Special', hint:'Late-game or under-one-second call.', section:'BLOB', sub:'', href:'rpcs-blob.html#blob-special'},
+  {id:'sp-ato', label:'ATO Play', hint:'After-timeout call drawn up for a specific look or mismatch.', section:'Specials', sub:'', href:'rpcs-special.html#sp-ato'},
+  {id:'sp-need3', label:'Need-a-3 Set', hint:'Late-clock, must-score-from-three entry.', section:'Specials', sub:'', href:'rpcs-special.html#sp-need3'},
+  {id:'sp-lead', label:'Protect-the-Lead Plan', hint:'Clock management, foul-to-give rules, closing lineup.', section:'Specials', sub:'', href:'rpcs-special.html#sp-lead'},
+];
+
+</script>
+<script>
+/* ChalkTalk shared search widget.
+   Expects window.CHALK_PLAYS = [{id,label,hint,section,sub,href}, ...]
+   set by a page-specific *-plays.js file loaded before this one. */
+(function(){
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function highlight(text, query){
+    var idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if(idx === -1) return escapeHtml(text);
+    return escapeHtml(text.slice(0,idx)) + '<mark>' + escapeHtml(text.slice(idx, idx+query.length)) + '</mark>' + escapeHtml(text.slice(idx+query.length));
+  }
+
+  function initChalkSearch(inputId, resultsId){
+    var input = document.getElementById(inputId);
+    var results = document.getElementById(resultsId);
+    var plays = window.CHALK_PLAYS || [];
+    if(!input || !results) return;
+
+    var activeIndex = -1;
+    var currentMatches = [];
+
+    function search(query){
+      var q = query.trim().toLowerCase();
+      if(!q) return [];
+      return plays.filter(function(p){
+        return p.label.toLowerCase().indexOf(q) !== -1 ||
+               (p.hint && p.hint.toLowerCase().indexOf(q) !== -1) ||
+               p.section.toLowerCase().indexOf(q) !== -1 ||
+               (p.sub && p.sub.toLowerCase().indexOf(q) !== -1);
+      });
+    }
+
+    function render(matches, query){
+      results.innerHTML = '';
+      if(!query){ results.classList.remove('open'); return; }
+      if(matches.length === 0){
+        results.innerHTML = '<div class="search-empty">No matches for &quot;' + escapeHtml(query) + '&quot;. Nothing has been built yet, or try a different term.</div>';
+        results.classList.add('open');
+        return;
+      }
+      matches.slice(0,8).forEach(function(m, i){
+        var row = document.createElement('a');
+        row.href = m.href;
+        row.className = 'search-row' + (i === activeIndex ? ' active' : '');
+        row.innerHTML = '<span class="sr-label">' + highlight(m.label, query) + '</span><span class="sr-path">' + escapeHtml(m.section) + (m.sub ? ' &rsaquo; ' + escapeHtml(m.sub) : '') + '</span>';
+        results.appendChild(row);
+      });
+      results.classList.add('open');
+    }
+
+    input.addEventListener('input', function(){
+      activeIndex = -1;
+      currentMatches = search(input.value);
+      render(currentMatches, input.value.trim());
+    });
+
+    input.addEventListener('keydown', function(e){
+      if(!results.classList.contains('open')) return;
+      var rows = results.querySelectorAll('.search-row');
+      if(e.key === 'ArrowDown'){
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, rows.length - 1);
+        rows.forEach(function(r){ r.classList.remove('active'); });
+        if(rows[activeIndex]) rows[activeIndex].classList.add('active');
+      } else if(e.key === 'ArrowUp'){
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        rows.forEach(function(r){ r.classList.remove('active'); });
+        if(rows[activeIndex]) rows[activeIndex].classList.add('active');
+      } else if(e.key === 'Enter'){
+        e.preventDefault();
+        if(activeIndex >= 0 && rows[activeIndex]){
+          window.location.href = rows[activeIndex].getAttribute('href');
+        } else if(currentMatches[0]){
+          window.location.href = currentMatches[0].href;
+        }
+      } else if(e.key === 'Escape'){
+        results.classList.remove('open');
+        input.blur();
+      }
+    });
+
+    document.addEventListener('click', function(e){
+      if(e.target !== input && !results.contains(e.target)){
+        results.classList.remove('open');
+      }
+    });
+  }
+
+  window.initChalkSearch = initChalkSearch;
+
+  document.addEventListener('DOMContentLoaded', function(){
+    if(window.location.hash){
+      var el = document.querySelector(window.location.hash);
+      if(el){
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        el.classList.add('flash');
+        setTimeout(function(){ el.classList.remove('flash'); }, 2200);
+      }
+    }
+  });
+})();
+
+</script>
+</head>
+<body>
+
+  <nav class="section-nav">
+    <a href="rpcs-offense.html">Offense</a>
+    <a href="rpcs-defense.html">Defense</a>
+    <a href="rpcs-slob.html">SLOB</a>
+    <a href="rpcs-blob.html" class="active">BLOB</a>
+    <a href="rpcs-special.html">Specials</a>
+  </nav>
+
+  <div class="page-header">
+    <a class="home-link" href="rpcs-hub.html">&larr; Return to RPCS Reds Hub</a>
+    <div class="page-title-row">
+      <h1>BLOB</h1>
+      <div class="team-tag">RPCS Reds</div>
+    </div>
+
+    <div class="search-wrap" style="margin:18px 0 0;max-width:100%;">
+      <input type="text" id="chalkSearch" placeholder="Search plays, sets, coverages..." autocomplete="off">
+      <div class="search-results" id="chalkSearchResults"></div>
+    </div>
+  </div>
+
+  <section class="section" id="blob">
+    <div class="section-head">
+      <h2>BLOB</h2>
+      <p>Baseline Out Of Bounds</p>
+    </div>
+    <div class="grid">
+      <a class="card ghost" id="blob-play" href="#" onclick="return false;">
+        <span class="plus">+</span>
+        <span class="ghost-label">BLOB Play</span>
+        <span class="ghost-hint">Staggered screen action off the baseline for a shooter or rim finish.</span>
+      </a>
+      <a class="card ghost" id="blob-special" href="#" onclick="return false;">
+        <span class="plus">+</span>
+        <span class="ghost-label">BLOB Special</span>
+        <span class="ghost-hint">Late-game or under-one-second call.</span>
+      </a>
+    </div>
+  </section>
+
+  <script>
+    initChalkSearch('chalkSearch', 'chalkSearchResults');
+  </script>
+
+<footer>
+  <div class="mark"><b>CHALK</b>TALK</div>
+  <div class="tagline">RPCS Reds &nbsp;&middot;&nbsp; Coach-Built Playbooks</div>
+</footer>
+</body>
+</html>

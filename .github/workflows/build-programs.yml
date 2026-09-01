@@ -1,0 +1,49 @@
+name: Build program pages
+
+# Runs build_site.py whenever a programs/*.json config changes on a
+# feature/new-program-* branch (created by api/create-program.js or
+# api/approve-program.js), and commits the generated hub/section HTML
+# straight back onto that same branch. This is the automated half of
+# "commit JSON -> Action builds HTML -> Vercel makes a preview -> Shaun
+# reviews and merges" -- it never touches main directly, and never runs
+# on the programs-pending storage branch (that one holds raw, unreviewed
+# form submissions and should never be built).
+on:
+  push:
+    branches:
+      - "feature/new-program-**"
+    paths:
+      - "programs/**"
+      - "build_site.py"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run build_site.py
+        run: python3 build_site.py
+
+      - name: Commit generated pages
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git add public/*.html public/*.js
+          if git diff --cached --quiet; then
+            echo "Nothing to commit -- generated output unchanged."
+          else
+            git commit -m "Auto-build: regenerate program pages [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi

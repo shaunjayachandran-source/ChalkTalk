@@ -1,0 +1,20 @@
+{
+  "file_prefix": "dartmouth",
+  "title": "Dartmouth Big Green",
+  "team_name": "BIG GREEN",
+  "team_sub": "MEN&rsquo;S BASKETBALL &middot; <b>IVY LEAGUE</b>",
+  "hero_line": "Playbook hub for Dartmouth Men&rsquo;s Basketball &mdash; built for coaches and players to see the same system explained at the depth each of them needs.",
+  "sign_accent": "HANOVER, NH&nbsp;&middot;&nbsp;LEEDE ARENA",
+  "coach_line": "Head Coach: <b>Brett MacConnell</b>",
+  "crest_html": "<svg width=\"48\" height=\"48\" viewBox=\"0 0 100 100\" aria-label=\"Dartmouth D monogram\"><path d=\"M22 12 H50 C72 12 86 28 86 50 C86 72 72 88 50 88 H22 Z M38 28 V72 H49 C63 72 70 62 70 50 C70 38 63 28 49 28 Z\" fill=\"#ffffff\" fill-rule=\"evenodd\"/></svg>",
+  "accent_glow": "rgba(0,105,62,.35)",
+  "accent_crest": "linear-gradient(160deg,#00693e,#003d24)",
+  "notes_text": "No plays have been built yet for this program. Pick a section below, or search above &mdash; each card fills in once Coach MacConnell&rsquo;s staff runs a play through <b>Intake Mode</b> (spoken description, uploaded diagram, or typed notes).",
+  "hero_mode": "photo",
+  "tagline": "Dartmouth Big Green",
+  "hero_photo_file": "dartmouth-hero.jpg",
+  "hero_photo_alt": "Baker Tower, Dartmouth College",
+  "hero_photo_credit": "Photo: Baker Tower, Dartmouth College &mdash; Gavin Huang, <a href=\"https://commons.wikimedia.org/wiki/File:BakerLibrary.jpg\" target=\"_blank\" rel=\"noopener\">CC BY 3.0</a>, via Wikimedia Commons",
+  "slug": "dartmouth",
+  "beta_status": "live"
+}

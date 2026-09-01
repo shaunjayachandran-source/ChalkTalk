@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChalkTalk Admin &mdash; New Program</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap');
+  :root{
+    --bg:#0d1017; --card:#161c27; --line:#232b38; --gold:#f0b429;
+    --text:#eef1f6; --dim:#8b93a3; --teal:#1abc9c; --danger:#ff5a3c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;padding:24px 16px 60px;}
+  h1{font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:.02em;margin-bottom:4px;}
+  .sub{font-family:'DM Mono',monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:28px;}
+  .card{max-width:640px;margin:0 auto 28px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:22px;}
+  .card h2{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:.02em;margin-bottom:14px;}
+  label{display:block;font-size:.78rem;color:var(--dim);margin:12px 0 5px;}
+  input[type=text], input[type=color], select{
+    width:100%;padding:10px 12px;background:#0f131c;border:1px solid var(--line);
+    border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.9rem;
+  }
+  input[type=color]{padding:4px;height:40px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  button{
+    margin-top:18px;padding:11px 18px;border:none;border-radius:6px;
+    background:var(--gold);color:#0d1017;font-weight:700;font-size:.88rem;cursor:pointer;
+  }
+  button.secondary{background:transparent;border:1px solid var(--line);color:var(--text);}
+  button.danger{background:transparent;border:1px solid rgba(255,90,60,.5);color:var(--danger);}
+  button:disabled{opacity:.5;cursor:default;}
+  .msg{margin-top:14px;padding:10px 12px;border-radius:6px;font-size:.84rem;line-height:1.5;}
+  .msg.ok{background:rgba(26,188,156,.1);border:1px solid rgba(26,188,156,.4);color:var(--teal);}
+  .msg.err{background:rgba(255,90,60,.1);border:1px solid rgba(255,90,60,.4);color:var(--danger);}
+  .msg a{color:inherit;text-decoration:underline;}
+  .pending-item{border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:10px;}
+  .pending-item .t{font-weight:700;}
+  .pending-item .meta{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--dim);margin:4px 0 10px;}
+  .pending-item .actions{display:flex;gap:8px;}
+  .empty{color:var(--dim);font-size:.85rem;}
+  #gate{max-width:360px;margin:80px auto;text-align:center;}
+  #gate input{margin-bottom:12px;}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>ChalkTalk Admin</h1>
+  <div class="sub">Enter admin token to continue</div>
+  <input type="text" id="tokenInput" placeholder="Admin token">
+  <button id="unlockBtn" style="width:100%;">Unlock</button>
+  <div id="gateMsg"></div>
+</div>
+
+<div id="app" style="display:none;">
+  <h1>New Program</h1>
+  <div class="sub">ChalkTalk Admin &middot; not the coach dashboard</div>
+
+  <div class="card">
+    <h2>Create a Program</h2>
+    <form id="createForm">
+      <label>Slug (used in URLs, e.g. "crossover-elite")</label>
+      <input type="text" name="slug" required pattern="[a-z0-9][a-z0-9-]{1,40}">
+
+      <label>Program title (e.g. "Crossover Elite")</label>
+      <input type="text" name="title" required>
+
+      <div class="row2">
+        <div>
+          <label>Team name (all caps, e.g. "CROSSOVER ELITE")</label>
+          <input type="text" name="team_name">
+        </div>
+        <div>
+          <label>Initials for crest (e.g. "CE")</label>
+          <input type="text" name="initials" maxlength="4">
+        </div>
+      </div>
+
+      <label>League / conference tag</label>
+      <input type="text" name="league" placeholder="e.g. MEN&rsquo;S BASKETBALL &middot; AAU">
+
+      <label>Head coach name</label>
+      <input type="text" name="coach_line" placeholder="e.g. Shaun Jayachandran">
+
+      <label>Head coach email (invites a real coach account &mdash; leave blank to create the page only)</label>
+      <input type="text" name="coach_email" placeholder="coach@example.com">
+
+      <label>Location line</label>
+      <input type="text" name="sign_accent" placeholder="e.g. CHENNAI, INDIA">
+
+      <div class="row2">
+        <div>
+          <label>Primary color</label>
+          <input type="color" name="primary_color" value="#f0b429">
+        </div>
+        <div>
+          <label>Status</label>
+          <select name="beta_status">
+            <option value="beta" selected>Beta</option>
+            <option value="live">Live</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn">Create Program</button>
+      <div id="createMsg"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Pending Requests</h2>
+    <div class="sub" style="margin-bottom:14px;">Submitted through the beta-signup Google Form. Nothing here is live until you approve it.</div>
+    <div id="pendingList" class="empty">Loading&hellip;</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var TOKEN_KEY = 'chalktalk_admin_token';
+
+  function getToken(){ return sessionStorage.getItem(TOKEN_KEY) || ''; }
+  function setToken(t){ sessionStorage.setItem(TOKEN_KEY, t); }
+
+  function apiCall(path, options){
+    options = options || {};
+    options.headers = Object.assign({
+      'Authorization': 'Bearer ' + getToken(),
+      'Content-Type': 'application/json',
+    }, options.headers || {});
+    return fetch(path, options).then(function(res){
+      return res.json().then(function(body){
+        if(!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function showApp(){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadPending();
+  }
+
+  function tryUnlock(token){
+    setToken(token);
+    // Cheapest way to confirm the token actually works: hit the
+    // list-pending endpoint, which is admin-gated. A bad token surfaces
+    // as a 401 here instead of silently showing a broken admin screen.
+    apiCall('/api/list-pending-programs').then(function(){
+      showApp();
+    }).catch(function(err){
+      document.getElementById('gateMsg').innerHTML = '<div class="msg err">' + escapeHtml(err.message) + '</div>';
+      sessionStorage.removeItem(TOKEN_KEY);
+    });
+  }
+
+  document.getElementById('unlockBtn').addEventListener('click', function(){
+    var t = document.getElementById('tokenInput').value.trim();
+    if(!t) return;
+    tryUnlock(t);
+  });
+
+  if(getToken()){
+    // already unlocked earlier this tab session -- confirm then show.
+    tryUnlock(getToken());
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  document.getElementById('createForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var form = e.target;
+    var fd = new FormData(form);
+    var body = {};
+    fd.forEach(function(v, k){ body[k] = v; });
+
+    var btn = document.getElementById('submitBtn');
+    var msg = document.getElementById('createMsg');
+    btn.disabled = true;
+    msg.innerHTML = '';
+
+    apiCall('/api/create-program', { method: 'POST', body: JSON.stringify(body) })
+      .then(function(result){
+        var provisionLine;
+        if(result.provisionError){
+          provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.provisionError) + '</strong>';
+        } else if(result.coachInvited){
+          provisionLine = '<br>Real program created in Supabase, and the coach has been emailed a login invite.';
+        } else if(result.skipped){
+          provisionLine = '<br>No coach email was given, so no Supabase program was created yet -- only the static page. Add a coach email later to make it a real, loggable-in program.';
+        } else if(result.coachError){
+          provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
+        } else {
+          provisionLine = '';
+        }
+        msg.innerHTML = '<div class="msg ok">Created on branch <code>' + escapeHtml(result.branch) +
+          '</code>. <a href="' + result.compareUrl + '" target="_blank" rel="noopener">Open compare &amp; PR &rarr;</a><br>' +
+          'The build-programs Action will generate the hub/section HTML on that branch automatically -- give it a minute, then check Vercel for the preview URL before merging.' +
+          provisionLine + '</div>';
+        form.reset();
+      })
+      .catch(function(err){
+        msg.innerHTML = '<div class="msg err">' + escapeHtml(err.message) + '</div>';
+      })
+      .finally(function(){
+        btn.disabled = false;
+      });
+  });
+
+  function loadPending(){
+    var list = document.getElementById('pendingList');
+    list.innerHTML = 'Loading&hellip;';
+    apiCall('/api/list-pending-programs').then(function(result){
+      var pending = result.pending || [];
+      if(!pending.length){
+        list.innerHTML = '<div class="empty">No pending requests right now.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      pending.forEach(function(p){
+        var el = document.createElement('div');
+        el.className = 'pending-item';
+        el.innerHTML =
+          '<div class="t">' + escapeHtml(p.title || p.slug) + '</div>' +
+          '<div class="meta">slug: ' + escapeHtml(p.slug) + ' &middot; status: ' + escapeHtml(p.beta_status || 'beta') + '</div>' +
+          '<div class="actions">' +
+            '<button class="approve" data-slug="' + escapeHtml(p.slug) + '">Approve</button>' +
+            '<button class="danger reject" data-slug="' + escapeHtml(p.slug) + '">Reject</button>' +
+          '</div>' +
+          '<div class="result"></div>';
+        list.appendChild(el);
+      });
+    }).catch(function(err){
+      list.innerHTML = '<div class="msg err">' + escapeHtml(err.message) + '</div>';
+    });
+  }
+
+  document.getElementById('pendingList').addEventListener('click', function(e){
+    var target = e.target;
+    if(target.classList.contains('approve') || target.classList.contains('reject')){
+      var slug = target.getAttribute('data-slug');
+      var isApprove = target.classList.contains('approve');
+      var resultEl = target.closest('.pending-item').querySelector('.result');
+      target.disabled = true;
+      resultEl.innerHTML = 'Working&hellip;';
+      apiCall(isApprove ? '/api/approve-program' : '/api/reject-program', {
+        method: 'POST',
+        body: JSON.stringify({ slug: slug }),
+      }).then(function(result){
+        if(isApprove){
+          var provisionLine;
+          if(result.provisionError){
+            provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.provisionError) + '</strong>';
+          } else if(result.coachInvited){
+            provisionLine = '<br>Real program created in Supabase, and the coach has been emailed a login invite.';
+          } else if(result.skipped){
+            provisionLine = '<br>No coach email was on this request, so no Supabase program was created yet -- only the static page.';
+          } else if(result.coachError){
+            provisionLine = '<br><strong style="color:var(--danger);">' + escapeHtml(result.coachError) + '</strong>';
+          } else {
+            provisionLine = '';
+          }
+          resultEl.innerHTML = '<div class="msg ok">Approved &mdash; branch <code>' + escapeHtml(result.branch) +
+            '</code>. <a href="' + result.compareUrl + '" target="_blank" rel="noopener">Open compare &amp; PR &rarr;</a>' + provisionLine + '</div>';
+        } else {
+          resultEl.innerHTML = '<div class="msg ok">Rejected.</div>';
+        }
+        setTimeout(loadPending, 1200);
+      }).catch(function(err){
+        resultEl.innerHTML = '<div class="msg err">' + escapeHtml(err.message) + '</div>';
+        target.disabled = false;
+      });
+    }
+  });
+})();
+</script>
+</body>
+</html>
