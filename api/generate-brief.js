@@ -183,7 +183,7 @@ export default async function handler(req, res) {
         // phases/players/text to get cut off mid-JSON at the old limit,
         // which fails to parse. This is a safety margin on top of the
         // 8-phase hard cap in the system prompt, not a substitute for it.
-        max_tokens: 6000,
+        max_tokens: 10000,
         system: BRIEF_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
       }),
