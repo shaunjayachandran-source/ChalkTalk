@@ -80,6 +80,14 @@
   .modal-actions button { font-family:'DM Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:7px 12px; border-radius:3px; cursor:pointer; border:1px solid var(--border); background:#1c2532; color:var(--white); }
   .modal-actions button.primary { background:var(--gold); color:#0d1017; border-color:var(--gold); font-weight:700; }
   .modal-actions button.danger { background:#5c2a26; border-color:#ff7b6e; color:#ffd6d0; }
+  .modal-actions button:disabled { opacity:.4; cursor:not-allowed; }
+  .hidden { display:none !important; }
+  #actionPromptModal .modal-box { max-width:440px; }
+  #apDescribeInput { width:100%; box-sizing:border-box; min-height:70px; resize:vertical; background:#0d1017; border:1px solid var(--border); border-radius:4px; color:var(--white); font-family:'DM Sans',sans-serif; font-size:12.5px; padding:8px; margin-bottom:10px; }
+  .ap-error { font-size:11.5px; color:#ff9d8f; background:#2a1512; border:1px solid #5c2a26; border-radius:4px; padding:8px 10px; margin-bottom:12px; line-height:1.4; }
+  .ap-note { font-size:11.5px; color:var(--white); background:#1c2532; border:1px solid var(--border); border-radius:4px; padding:8px 10px; margin-bottom:12px; line-height:1.5; }
+  .ap-note b { color:var(--gold); }
+  .ap-hint { font-size:11px; color:#9aa4b2; margin-bottom:10px; line-height:1.4; }
 </style>
 </head>
 <body>
@@ -123,12 +131,37 @@
 <div class="modal-overlay" id="actionPromptModal">
   <div class="modal-box">
     <h4>Player Repositioned</h4>
-    <p id="actionPromptText"></p>
-    <div class="modal-actions">
-      <button id="actionPromptCancelBtn">Cancel (Undo Move)</button>
-      <button disabled title="Coming in a later step - regenerates this action from a description via AI">Describe New Action...</button>
-      <button class="primary" id="sameActionBtn">Same Action, New Spot</button>
+
+    <div id="apChoice">
+      <p id="actionPromptText"></p>
+      <div class="modal-actions">
+        <button id="actionPromptCancelBtn">Cancel (Undo Move)</button>
+        <button id="describeActionBtn" disabled>Describe New Action...</button>
+        <button class="primary" id="sameActionBtn">Same Action, New Spot</button>
+      </div>
     </div>
+
+    <div id="apDescribe" class="hidden">
+      <p>What does this player do instead, from the new spot? Describe it in plain language - same style you'd use talking to the team.</p>
+      <textarea id="apDescribeInput" placeholder="e.g. 2 cuts hard along the baseline to the corner for a kick-out three"></textarea>
+      <div id="apDescribeError" class="ap-error hidden"></div>
+      <div class="modal-actions">
+        <button id="apBackBtn">Back</button>
+        <button class="primary" id="apGenerateBtn">Generate</button>
+      </div>
+    </div>
+
+    <div id="apPreview" class="hidden">
+      <div id="apPreviewError" class="ap-error hidden"></div>
+      <div id="apPreviewNote" class="ap-note hidden"></div>
+      <p class="ap-hint">The court behind this dialog is showing the new arrow live - nothing is saved until you click Accept, and Save Now still needs to be pressed after that.</p>
+      <div class="modal-actions">
+        <button id="apCancelBtn">Cancel (Undo Move)</button>
+        <button id="apTryAgainBtn">Try Again</button>
+        <button class="primary hidden" id="apAcceptBtn">Accept</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -201,6 +234,7 @@ let showDefense = false;  // display-only toggle, independent of Edit Mode - def
 let isDirty = false;
 let loadedSnapshot = null;   // deep clone of PLAY as last loaded/saved from Supabase - what "Discard" reverts to
 let loadedUpdatedAt = null;  // structured_plays.updated_at as of last load/save - used to detect a concurrent edit before overwriting
+let PLAY_PROGRAM_ID = null;  // structured_plays.program_id - needed by /api/regenerate-action's validateCoachSession call, not used for rendering
 let autosaveTimer = null;
 
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
@@ -406,7 +440,7 @@ function loadPlay() {
 
     const { data: row, error: queryError } = await supabase
       .from('structured_plays')
-      .select('data, updated_at')
+      .select('data, updated_at, program_id')
       .eq('slug', 'chin-ball-screen')
       .single();
 
@@ -420,6 +454,7 @@ function loadPlay() {
     PLAY = row.data;
     PLAY.players.forEach(p => players[p.id] = p);
     loadedUpdatedAt = row.updated_at;
+    PLAY_PROGRAM_ID = row.program_id;
     loadedSnapshot = deepClone(PLAY);
 
     statusEl.textContent = 'Loaded live from Supabase (structured_plays: chin-ball-screen)';
@@ -808,7 +843,42 @@ function handlePlayerRepositioned(posData, oldCx, oldCy) {
   document.getElementById('actionPromptText').textContent =
     posData.playerId + ' moved, which affects ' + (owned.length > 1 ? 'actions ' : 'action ') + names +
     ' in this phase. Is this still the same action, just starting from the new spot - or something different?';
+
+  // AI regeneration (via /api/regenerate-action) only ever proposes ONE
+  // replacement action - if this player owns more than one action this
+  // phase (rare, but possible - e.g. a screener who also has an option
+  // line), there's no single action to hand the endpoint, so the describe
+  // path stays disabled and "Same Action, New Spot" is still available for
+  // a deterministic re-anchor of all of them.
+  const describeBtn = document.getElementById('describeActionBtn');
+  if (owned.length === 1) {
+    describeBtn.disabled = false;
+    describeBtn.title = 'Type what this player does instead - AI proposes one replacement action, nothing applies until you Accept it';
+  } else {
+    describeBtn.disabled = true;
+    describeBtn.title = owned.length + ' actions belong to this player this phase - AI regeneration currently handles one action at a time. Use "Same Action, New Spot" for now.';
+  }
+
+  resetActionPromptViews();
   showModal('actionPromptModal');
+}
+
+// Restores the modal to its opening state (the three-way choice) - used
+// both when the modal is first shown and whenever a describe/preview
+// sub-flow is abandoned, so a half-typed description or a stale error
+// never lingers into the next reposition.
+function resetActionPromptViews() {
+  document.getElementById('apChoice').classList.remove('hidden');
+  document.getElementById('apDescribe').classList.add('hidden');
+  document.getElementById('apPreview').classList.add('hidden');
+  document.getElementById('apDescribeInput').value = '';
+  document.getElementById('apDescribeError').classList.add('hidden');
+  document.getElementById('apPreviewError').classList.add('hidden');
+  document.getElementById('apPreviewNote').classList.add('hidden');
+  document.getElementById('apAcceptBtn').classList.add('hidden');
+  const genBtn = document.getElementById('apGenerateBtn');
+  genBtn.disabled = false;
+  genBtn.textContent = 'Generate';
 }
 
 // Deterministic re-anchoring, no AI involved: keeps the SAME curve shape
@@ -867,20 +937,272 @@ document.getElementById('sameActionBtn').addEventListener('click', () => {
   renderCourt();
 });
 
-document.getElementById('actionPromptCancelBtn').addEventListener('click', () => {
+// Full cancel, reachable from either the initial choice screen
+// (actionPromptCancelBtn) or the preview screen after a regeneration
+// (apCancelBtn) - both need to undo the drag AND, if a candidate action
+// was already swapped into PLAY for the live preview, put the original
+// action back. Sharing one function keeps those two restore steps from
+// drifting apart.
+function fullyCancelReposition() {
   if (pendingReposition) {
-    // Undo the move entirely. There's nowhere to send "something different"
-    // yet (that's the AI-regeneration path from the plan, not built) - so
-    // leaving the player moved with their action untouched would silently
-    // orphan an arrow that now starts from the wrong place, which is worse
-    // than just reverting the drag.
     pendingReposition.posData.cx = pendingReposition.oldCx;
     pendingReposition.posData.cy = pendingReposition.oldCy;
+    if (apOwnedIndex > -1 && apOriginalAction) {
+      const phase = PLAY.phases[currentPhase];
+      phase.actions[apOwnedIndex] = apOriginalAction;
+    }
   }
   pendingReposition = null;
+  apOriginalAction = null;
+  apOwnedIndex = -1;
   hideModal('actionPromptModal');
   renderCourt();
+}
+
+document.getElementById('actionPromptCancelBtn').addEventListener('click', fullyCancelReposition);
+document.getElementById('apCancelBtn').addEventListener('click', fullyCancelReposition);
+
+// --- Step 10, microstep 2: "Describe New Action..." wired to
+// /api/regenerate-action, with client-side schema validation and a live
+// preview the coach must explicitly Accept before anything is kept. ---
+
+let apOriginalAction = null; // deep clone of the one owned action, set right before a candidate is swapped in for preview - null whenever no preview is showing
+let apOwnedIndex = -1;       // index of that action within phase.actions - -1 whenever no preview is showing
+let apGenerating = false;    // guards against a double-submit while a request is in flight
+
+document.getElementById('describeActionBtn').addEventListener('click', () => {
+  document.getElementById('apChoice').classList.add('hidden');
+  document.getElementById('apDescribe').classList.remove('hidden');
+  document.getElementById('apDescribeInput').focus();
 });
+
+document.getElementById('apBackBtn').addEventListener('click', () => {
+  document.getElementById('apDescribe').classList.add('hidden');
+  document.getElementById('apChoice').classList.remove('hidden');
+});
+
+// Mirrors the bounds ACTION_SYSTEM_PROMPT gives the model in
+// api/regenerate-action.js (half-court viewBox 0 0 520 420, court art at
+// x:15-504 y:110-397, basket at ~cx=260 cy=370) - checked again here
+// because the model is asked nicely to stay in bounds, not forced to via a
+// tool schema, so a response that ignores the instructions has to be
+// caught before it ever reaches PLAY, not just hoped against.
+function validateGeneratedAction(action, expectedPlayerId, expectedColorKey, otherPlayerIds) {
+  const errs = [];
+  if (!action || typeof action !== 'object') return ['Response was not an action object.'];
+
+  const VALID_TYPES = ['dribble', 'cut', 'pass', 'screen'];
+  if (!VALID_TYPES.includes(action.type)) {
+    errs.push('type "' + action.type + '" is not one of dribble/cut/pass/screen.');
+  }
+  if (action.colorKey !== expectedColorKey) {
+    errs.push('colorKey "' + action.colorKey + '" does not match this player\'s real color ("' + expectedColorKey + '").');
+  }
+  if (!action.note || typeof action.note !== 'string' || !action.note.trim()) {
+    errs.push('missing a coaching "note" explaining the action.');
+  }
+
+  function inBounds(pt, label) {
+    if (!pt || typeof pt.cx !== 'number' || typeof pt.cy !== 'number') {
+      errs.push(label + ' is missing or not numeric.');
+      return;
+    }
+    if (pt.cx < 15 || pt.cx > 504 || pt.cy < 110 || pt.cy > 397) {
+      errs.push(label + ' (' + pt.cx + ',' + pt.cy + ') falls outside the court art bounds.');
+    }
+  }
+
+  if (action.type === 'screen') {
+    if (action.byPlayerId !== expectedPlayerId) {
+      errs.push('screen byPlayerId should be "' + expectedPlayerId + '" (the repositioned player).');
+    }
+    if (!action.forPlayerId || !otherPlayerIds.includes(action.forPlayerId)) {
+      errs.push('screen forPlayerId "' + action.forPlayerId + '" is not one of this phase\'s other players.');
+    }
+    inBounds(action.atPoint, 'atPoint');
+  } else if (VALID_TYPES.includes(action.type)) {
+    if (action.playerId !== expectedPlayerId) {
+      errs.push('playerId "' + action.playerId + '" does not match the repositioned player ("' + expectedPlayerId + '").');
+    }
+    inBounds(action.endpoint, 'endpoint');
+    if (action.endpoint && action.endpoint.cy >= 368) {
+      errs.push('endpoint (' + action.endpoint.cx + ',' + action.endpoint.cy + ') finishes at or behind the basket, not a realistic scoring spot.');
+    }
+    if (action.type === 'dribble') {
+      if (!Array.isArray(action.waypoints) || action.waypoints.length < 2) {
+        errs.push('dribble is missing at least 2 waypoints.');
+      } else {
+        action.waypoints.forEach((wp, i) => inBounds(wp, 'waypoint[' + i + ']'));
+      }
+    } else {
+      if (!action.path || !/^M\s*[-\d.]+,[-\d.]+\s*Q\s*[-\d.]+,[-\d.]+\s*[-\d.]+,[-\d.]+/.test(action.path)) {
+        errs.push('path is missing or is not a simple "M x,y Q cx,cy x,y" curve.');
+      }
+    }
+  }
+  return errs;
+}
+
+async function fetchRegeneratedAction(description) {
+  if (!supabase) throw new Error('Not connected to Supabase yet - reload the page.');
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData.session) {
+    throw new Error('Your coach session has expired - reload the page and log in again.');
+  }
+  if (!PLAY_PROGRAM_ID) {
+    throw new Error('This play has no program_id loaded - cannot authorize the request.');
+  }
+
+  const { posData, owned } = pendingReposition;
+  const oldAction = owned[0];
+  const phase = PLAY.phases[currentPhase];
+  const otherPlayers = PLAY.players
+    .filter(p => p.id !== posData.playerId)
+    .map(p => {
+      const pos = (phase.playerPositions || []).find(pp => pp.playerId === p.id);
+      return { id: p.id, number: p.number, cx: pos ? pos.cx : null, cy: pos ? pos.cy : null };
+    });
+
+  const res = await fetch('/api/regenerate-action', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + sessionData.session.access_token,
+    },
+    body: JSON.stringify({
+      programId: PLAY_PROGRAM_ID,
+      playerId: posData.playerId,
+      playerNumber: players[posData.playerId].number,
+      newPosition: { cx: posData.cx, cy: posData.cy },
+      oldAction: oldAction,
+      otherPlayers: otherPlayers,
+      phaseContext: { diagramLabel: phase.diagramLabel, footerCaption: phase.footerCaption },
+      description: description,
+    }),
+  });
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error((body && body.error) ? body.error : ('Request failed with status ' + res.status));
+  }
+  if (!body || !body.action) {
+    throw new Error('Server response had no "action" field.');
+  }
+  return body.action;
+}
+
+async function runGenerate() {
+  if (apGenerating || !pendingReposition) return;
+  const description = document.getElementById('apDescribeInput').value.trim();
+  const descErrEl = document.getElementById('apDescribeError');
+  if (!description) {
+    descErrEl.textContent = 'Type what happens instead before generating.';
+    descErrEl.classList.remove('hidden');
+    return;
+  }
+  descErrEl.classList.add('hidden');
+
+  apGenerating = true;
+  const genBtn = document.getElementById('apGenerateBtn');
+  genBtn.disabled = true;
+  genBtn.textContent = 'Generating...';
+
+  const { posData, owned } = pendingReposition;
+  const expectedColorKey = players[posData.playerId] ? getPlayerColorKey(posData.playerId) : null;
+  const otherPlayerIds = PLAY.players.filter(p => p.id !== posData.playerId).map(p => p.id);
+
+  try {
+    const candidate = await fetchRegeneratedAction(description);
+    const errs = validateGeneratedAction(candidate, posData.playerId, expectedColorKey, otherPlayerIds);
+
+    document.getElementById('apDescribe').classList.add('hidden');
+    document.getElementById('apPreview').classList.remove('hidden');
+
+    if (errs.length > 0) {
+      // Invalid response never touches PLAY - the coach sees exactly what
+      // was wrong (not a generic "something went wrong") and can Try Again
+      // or Cancel, but Accept is not offered for something that failed our
+      // own schema check, whatever Anthropic returned.
+      document.getElementById('apPreviewError').textContent =
+        'The generated action failed validation, so nothing was applied: ' + errs.join(' ');
+      document.getElementById('apPreviewError').classList.remove('hidden');
+      document.getElementById('apPreviewNote').classList.add('hidden');
+      document.getElementById('apAcceptBtn').classList.add('hidden');
+    } else {
+      // Valid - swap it into PLAY now so the coach sees a REAL live preview
+      // on the (dimmed) court behind the modal, not just a text summary.
+      // apOriginalAction/apOwnedIndex record what to put back if they
+      // Cancel or Try Again instead of Accepting.
+      const phase = PLAY.phases[currentPhase];
+      const idx = phase.actions.findIndex(a => a.id === owned[0].id);
+      if (apOriginalAction === null) apOriginalAction = deepClone(owned[0]);
+      apOwnedIndex = idx;
+      candidate.id = owned[0].id; // replace in place, never append a second action for the same slot
+      phase.actions[idx] = candidate;
+      renderCourt();
+
+      document.getElementById('apPreviewError').classList.add('hidden');
+      document.getElementById('apPreviewNote').innerHTML = '<b>' + candidate.type.toUpperCase() + '</b> - ' + escapeHtml(candidate.note);
+      document.getElementById('apPreviewNote').classList.remove('hidden');
+      document.getElementById('apAcceptBtn').classList.remove('hidden');
+    }
+  } catch (err) {
+    document.getElementById('apDescribe').classList.add('hidden');
+    document.getElementById('apPreview').classList.remove('hidden');
+    document.getElementById('apPreviewError').textContent = 'Generation failed: ' + err.message;
+    document.getElementById('apPreviewError').classList.remove('hidden');
+    document.getElementById('apPreviewNote').classList.add('hidden');
+    document.getElementById('apAcceptBtn').classList.add('hidden');
+  } finally {
+    apGenerating = false;
+    genBtn.disabled = false;
+    genBtn.textContent = 'Generate';
+  }
+}
+
+document.getElementById('apGenerateBtn').addEventListener('click', runGenerate);
+
+document.getElementById('apTryAgainBtn').addEventListener('click', () => {
+  // Put the original action back (undo the preview swap) but keep the
+  // player at their new dragged position and keep the description text,
+  // so the coach can just tweak wording rather than retype from scratch.
+  if (apOwnedIndex > -1 && apOriginalAction) {
+    PLAY.phases[currentPhase].actions[apOwnedIndex] = apOriginalAction;
+    renderCourt();
+  }
+  apOriginalAction = null;
+  apOwnedIndex = -1;
+  document.getElementById('apPreview').classList.add('hidden');
+  document.getElementById('apDescribe').classList.remove('hidden');
+});
+
+document.getElementById('apAcceptBtn').addEventListener('click', () => {
+  // The candidate is already live in PLAY.phases[currentPhase].actions
+  // (swapped in for the preview) - Accept just keeps it, same as any other
+  // edit: dirty until the coach presses the real Save Now button.
+  apOriginalAction = null;
+  apOwnedIndex = -1;
+  pendingReposition = null;
+  hideModal('actionPromptModal');
+  markDirty();
+  renderCourt();
+});
+
+function getPlayerColorKey(playerId) {
+  const p = players[playerId];
+  if (!p || !p.pillClass) return null;
+  // pillClass is "p1".."p5" by convention; COLOR_KEY_BY_PLAYER_NUMBER in
+  // api/regenerate-action.js maps number->colorKey the same way the
+  // player's own authored `color`/pillClass already implies, so deriving
+  // it from the player's number keeps this in one place instead of a
+  // second hardcoded map that could drift from the server's.
+  const map = { 1: 'au', 2: 'ag', 3: 'ab', 4: 'ap', 5: 'ar' };
+  return map[p.number] || null;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
 
 const COLOR_MAP = { au:'#f0b429', ag:'#27ae60', ab:'#7db3ff', ar:'#ff7b6e', ap:'#c39bd3', at:'#1abc9c' };
 const PLAYER_RADIUS = 9;
