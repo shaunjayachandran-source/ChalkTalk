@@ -81,6 +81,16 @@ Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema
   "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
 }
 
+Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema:
+{
+  "diagramSvg": "<svg>...</svg> markup as a string",
+  "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
+}
+
+Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not double quotes) for every SVG/HTML attribute in both (e.g. <circle cx='180' cy='285'>, <div class='cp'>) -- this avoids needing to escape quotes inside the JSON string, which is the most common cause of invalid JSON output.
+
+## SVG Diagram Rules
+- Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court)...
 ## SVG Diagram Rules
 - Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). You'll be told this phase's basket position: DOWN (default) or UP. Draw a simple court outline using whichever anchor set matches -- rect border, key/paint rectangle, free-throw circle, three-point arc, basket, backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2:
   DOWN: key/paint rect x=207 y=285 width=106 height=112 (baseline ~397), free-throw circle cx=260 cy=285 r=53, three-point arc path "M 58,355 Q 260,155 462,355", basket circle cy=375, backboard line y=385.
@@ -92,6 +102,12 @@ Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
 - Use unique marker/gradient IDs prefixed with the phase number if any defs are needed, to avoid collisions when multiple phases' SVGs sit in the same page.
 
+- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
+  Elbows: right cx=340, left cx=180 (elbow-level cy=285 for DOWN, cy=135 for UP).
+  Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=65 for UP).
+  Top slots (guard spots above the arc, e.g. wings relocating out of a corner): cy=205 for DOWN, cy=215 for UP.
+  Center top (ball-handler's start spot at the top of the key): cx=260 (cy=185 for DOWN, cy=235 for UP).
+  
 ## Sidebar HTML Rules
 - Wrap in a single top-level <div> (this fragment gets inserted into a container, don't repeat page chrome).
 - <h3> phase name in Title Case.
@@ -269,6 +285,7 @@ ${JSON.stringify(phase, null, 2)}`;
   }
 
   const data = await res.json();
+  console.log(`[generate-playbook] phase ${phase.phaseNumber} usage:`, data.usage);
   const textBlock = (data.content || []).find((b) => b.type === "text");
   if (!textBlock) {
     throw new Error(`No text response for phase ${phase.phaseNumber}`);
