@@ -81,12 +81,6 @@ Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema
   "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
 }
 
-Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema:
-{
-  "diagramSvg": "<svg>...</svg> markup as a string",
-  "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
-}
-
 Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not double quotes) for every SVG/HTML attribute in both (e.g. <circle cx='180' cy='285'>, <div class='cp'>) -- this avoids needing to escape quotes inside the JSON string, which is the most common cause of invalid JSON output.
 
 ## SVG Diagram Rules
