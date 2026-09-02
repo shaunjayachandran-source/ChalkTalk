@@ -34,7 +34,7 @@ import { validateCoachSession } from "./_lib/validate-session.js";
 // Runs on Vercel's default Node.js runtime — Edge Functions have a hard
 // ~25s cap that can't be extended, and open-ended play descriptions can
 // take the model longer to reason through than that.
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 180 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
