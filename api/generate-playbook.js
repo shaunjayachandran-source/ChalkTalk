@@ -290,11 +290,11 @@ ${JSON.stringify(phase, null, 2)}`;
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "");
 
-  let parsed;
+let parsed;
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
-    throw new Error(`Invalid JSON for phase ${phase.phaseNumber}`);
+    throw new Error(`Invalid JSON for phase ${phase.phaseNumber}: ${err.message}`);
   }
 
   return {
