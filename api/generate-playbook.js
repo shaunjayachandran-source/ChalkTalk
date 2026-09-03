@@ -97,8 +97,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
   Players who don't move: solid circle only, no ghost, no line.
 - Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel at that point -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
 - Court outline fill is always exactly "none" -- never a color -- on every element (border rect, key rect, free-throw circle, arc), on every phase, so the court looks visually identical across every tab.
-- Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.- Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
-- Use unique marker/gradient IDs prefixed with the phase number if any defs are needed, to avoid collisions when multiple phases' SVGs sit in the same page.
+- Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
+- Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).- Use unique marker/gradient IDs prefixed with the phase number if any defs are needed, to avoid collisions when multiple phases' SVGs sit in the same page.
 
 - Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
   Elbows: right cx=340, left cx=180 (elbow-level cy=285 for DOWN, cy=135 for UP).
