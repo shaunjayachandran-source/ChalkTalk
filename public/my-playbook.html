@@ -198,7 +198,7 @@
         catPlays.forEach((p) => {
           const a = document.createElement("a");
           a.className = "real-play-card";
-          a.href = p.storage_url || "#";
+          a.href = p.id ? `/api/view-play?playId=${encodeURIComponent(p.id)}&accessToken=${encodeURIComponent(token)}` : "#";
           a.target = "_blank";
           a.rel = "noopener";
           a.innerHTML = `
