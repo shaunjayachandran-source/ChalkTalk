@@ -259,7 +259,7 @@ export default async function handler(req, res) {
     console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
   }
 
-  return sendJson(res, { url: blobResult.url, status: initialStatus });
+  return sendJson(res, { url: blobResult.url, playId: playRow.id, status: initialStatus });
 }
 
 async function generatePhaseContent(phase, brief, isFinalPhase) {
