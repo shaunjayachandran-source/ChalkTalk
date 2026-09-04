@@ -83,8 +83,8 @@ export default async function handler(req, res) {
       : Promise.resolve({ data: null }),
     supabase
       .from("plays")
-      .select("title, play_type, sub_category, phase_count, court_type, storage_url, updated_at")
-      .eq("program_id", link.program_id)
+      .select("id, title, play_type, sub_category, phase_count, court_type, storage_url, updated_at")
+    .eq("program_id", link.program_id)
       .eq("status", "published")
       .order("updated_at", { ascending: false }),
   ]);
