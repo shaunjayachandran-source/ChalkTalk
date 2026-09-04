@@ -44,15 +44,21 @@ const BRIEF_SYSTEM_PROMPT = `You are a basketball play analyst. A coach will des
 Court coordinate system (half-court, viewBox 0 0 520 420 — use these ranges when placing players). The coach also specifies a basket position, either DOWN (basket near the bottom, the default) or UP (basket near the top, vertically mirrored) -- use whichever anchor set matches what you were told for this request:
 
 DOWN (basket at bottom):
-- Basket is at approximately x=260, y=370
-- Elbows: left x=207 y=285, right x=313 y=285
+- Basket is at approximately x=260, y=375
+- Elbows: left x=180 y=285, right x=340 y=285
+- Blocks: left x=207 y=390, right x=313 y=390
+- Short corner: left x=132 y=385, right x=388 y=385
+- Wings: left x=90 y=250, right x=430 y=250
 - Top of key / slots: y≈205
 - Deep corners: left x=58 y=355, right x=462 y=355
 - Center top (above the arc): x=260 y=185
 
 UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
-- Basket is at approximately x=260, y=50
-- Elbows: left x=207 y=135, right x=313 y=135
+- Basket is at approximately x=260, y=45
+- Elbows: left x=180 y=135, right x=340 y=135
+- Blocks: left x=207 y=30, right x=313 y=30
+- Short corner: left x=132 y=35, right x=388 y=35
+- Wings: left x=90 y=170, right x=430 y=170
 - Top of key / slots: y≈215
 - Deep corners: left x=58 y=65, right x=462 y=65
 - Center top (below the arc, toward mid-court): x=260 y=235
