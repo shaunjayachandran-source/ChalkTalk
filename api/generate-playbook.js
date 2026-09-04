@@ -94,8 +94,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
   college: 22'2" (22.15 ft) top, 21'8" (21.67 ft) corner.
   pro: 23'9" (23.75 ft) top, 22'0" (22.0 ft) corner.
   prep: same as college -- 22'2" (22.15 ft) top, 21'8" (21.67 ft) corner.
-  Construction: topR = topFeet * 8.83,
-  - Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+  Construction: topR = topFeet * 8.83, cornerX = cornerFeet * 8.83. Straight corner segments run parallel to the sideline at basket_cx +/- cornerX, from the baseline up to where that line meets the topR-radius circle centered on the basket (transition height = basket_cy -/+ sqrt(topR^2 - cornerX^2), sign matching which way the court extends from that basket). Draw: straight line from the baseline to that transition point, an elliptical arc (rx=ry=topR) across the top to the mirrored transition point, then straight back down to the baseline on the other side.
+- Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
 - Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
   - Dribbling with the ball: a tight, high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
