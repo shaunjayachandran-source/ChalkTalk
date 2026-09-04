@@ -852,7 +852,16 @@
         return;
       }
 
-      window.location.href = data.url;
+      // Fetch through view-play (with our session header) instead of
+      // navigating straight to the Blob URL, which always downloads.
+      const viewRes = await fetch(`/api/view-play?playId=${encodeURIComponent(data.playId)}`, {
+        headers: { 'Authorization': 'Bearer ' + currentSession.access_token },
+      });
+      const html = await viewRes.text();
+      const w = window.open('', '_blank');
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
     } catch (err) {
       showPreviewError('Network error during build — please try again.');
       btn.disabled = false;
