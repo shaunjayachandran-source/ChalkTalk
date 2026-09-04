@@ -104,6 +104,7 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 - Court outline fill is always exactly "none" -- never a color -- on every element (border rect, key rect, free-throw circle, arc), on every phase, so the court looks visually identical across every tab.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
+- Marker/gradient IDs: every phase must use its own unique IDs, prefixed with the phase number, so multiple phases' SVGs sitting in the same page never collide (e.g. phase 2's gold arrow marker id="p2-au"). Use these two-letter color codes for arrow/gradient markers: au=gold, ag=green, ab=blue, ar=red, ap=purple, at=teal -- matching the player's stroke color for that arrow. Example: phase 3's blue player's dribble-path arrowhead is id="p3-ab".
 - Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
   Elbows: right cx=340, left cx=180 (elbow-level cy=285 for DOWN, cy=135 for UP).
   Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=65 for UP).
