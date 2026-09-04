@@ -49,7 +49,7 @@
 import { put } from "@vercel/blob";
 import { validateCoachSession } from "./_lib/validate-session.js";
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 180 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -81,17 +81,30 @@ Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema
   "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
 }
 
+Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not double quotes) for every SVG/HTML attribute in both (e.g. <circle cx='180' cy='285'>, <div class='cp'>) -- this avoids needing to escape quotes inside the JSON string, which is the most common cause of invalid JSON output.
+
+
 ## SVG Diagram Rules
 - Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). You'll be told this phase's basket position: DOWN (default) or UP. Draw a simple court outline using whichever anchor set matches -- rect border, key/paint rectangle, free-throw circle, three-point arc, basket, backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2:
   DOWN: key/paint rect x=207 y=285 width=106 height=112 (baseline ~397), free-throw circle cx=260 cy=285 r=53, three-point arc path "M 58,355 Q 260,155 462,355", basket circle cy=375, backboard line y=385.
   UP: key/paint rect x=207 y=23 width=106 height=112 (baseline ~23, opening toward the top), free-throw circle cx=260 cy=135 r=53, three-point arc path "M 58,65 Q 260,265 462,65", basket circle cy=45, backboard line y=35.
   Full court always shows both baskets, so basket position doesn't apply there -- use the existing defensive/attacking basket layout regardless.
 - Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
-- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus an arrow/line connecting start to end (solid line = dribble/primary movement, dashed stroke-dasharray "7,4" = pass, stroke-width 2.5 primary / 2.0 secondary). Arrow tail/tip must touch circle edges, never float in open space. Players who don't move: solid circle only, no ghost, no line.
+- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
+  - Dribbling with the ball: a tight, high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
+  - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
+  - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.
+  Players who don't move: solid circle only, no ghost, no line.
+- Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel at that point -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
+- Court outline fill is always exactly "none" -- never a color -- on every element (border rect, key rect, free-throw circle, arc), on every phase, so the court looks visually identical across every tab.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
-- Use unique marker/gradient IDs prefixed with the phase number if any defs are needed, to avoid collisions when multiple phases' SVGs sit in the same page.
-
+- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
+  Elbows: right cx=340, left cx=180 (elbow-level cy=285 for DOWN, cy=135 for UP).
+  Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=65 for UP).
+  Top slots (guard spots above the arc, e.g. wings relocating out of a corner): cy=205 for DOWN, cy=215 for UP.
+  Center top (ball-handler's start spot at the top of the key): cx=260 (cy=185 for DOWN, cy=235 for UP).
+  
 ## Sidebar HTML Rules
 - Wrap in a single top-level <div> (this fragment gets inserted into a container, don't repeat page chrome).
 - <h3> phase name in Title Case.
@@ -257,7 +270,7 @@ ${JSON.stringify(phase, null, 2)}`;
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 4000,
+      max_tokens: 10000,
       system: PHASE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     }),
@@ -269,6 +282,7 @@ ${JSON.stringify(phase, null, 2)}`;
   }
 
   const data = await res.json();
+  console.log(`[generate-playbook] phase ${phase.phaseNumber} usage:`, data.usage);
   const textBlock = (data.content || []).find((b) => b.type === "text");
   if (!textBlock) {
     throw new Error(`No text response for phase ${phase.phaseNumber}`);
@@ -280,11 +294,11 @@ ${JSON.stringify(phase, null, 2)}`;
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "");
 
-  let parsed;
+let parsed;
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
-    throw new Error(`Invalid JSON for phase ${phase.phaseNumber}`);
+    throw new Error(`Invalid JSON for phase ${phase.phaseNumber}: ${err.message}`);
   }
 
   return {
