@@ -858,10 +858,9 @@
         headers: { 'Authorization': 'Bearer ' + currentSession.access_token },
       });
       const html = await viewRes.text();
-      const w = window.open('', '_blank');
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
+      document.open();
+      document.write(html);
+      document.close();
     } catch (err) {
       showPreviewError('Network error during build — please try again.');
       btn.disabled = false;
