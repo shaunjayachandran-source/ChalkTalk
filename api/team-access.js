@@ -86,6 +86,7 @@ export default async function handler(req, res) {
       .select("id, title, play_type, sub_category, phase_count, court_type, storage_url, updated_at")
     .eq("program_id", link.program_id)
       .eq("status", "published")
+      .eq("hidden", false)
       .order("updated_at", { ascending: false }),
   ]);
 
