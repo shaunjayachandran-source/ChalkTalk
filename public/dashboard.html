@@ -690,7 +690,7 @@
   async function loadPlays(programId) {
     const { data, error } = await supabase
       .from("plays")
-      .select("id, title, play_type, status, updated_at")
+      .select("id, title, play_type, status, hidden, updated_at")
       .eq("program_id", programId)
       .order("updated_at", { ascending: false });
 
@@ -702,18 +702,27 @@
       return;
     }
     empty.style.display = "none";
+    const canManage = ["head_coach", "assistant_coach", "dbo"].includes(currentUserRole);
     for (const play of data) {
       const tr = document.createElement("tr");
       const isPendingReview = play.status === "in_review";
-      const statusLabel = isPendingReview ? "Pending review" : play.status;
+      const statusLabel = play.hidden ? "Hidden" : isPendingReview ? "Pending review" : play.status;
       // Anyone can see a play is pending review; only a coach with
       // publish access on this program gets the button to act on it.
       // (The database enforces this too -- via the can_publish trigger on
       // plays -- this is just so a graduate assistant, say, doesn't see a
       // button that would only fail for them.)
-      const actionCell = isPendingReview && currentUserCanPublish
-        ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
-        : "";
+      const actionCell = [
+        isPendingReview && currentUserCanPublish
+          ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
+          : "",
+        canManage
+          ? `<button class="link-btn secondary hide-play-btn" data-play-id="${play.id}" data-hidden="${play.hidden}">${play.hidden ? "Unhide" : "Hide"}</button>`
+          : "",
+        canManage
+          ? `<button class="link-btn secondary delete-play-btn" data-play-id="${play.id}" data-play-title="${play.title.replace(/"/g, "&quot;")}">Delete</button>`
+          : "",
+      ].join(" ");
       tr.innerHTML = `
         <td>${play.title}</td>
         <td>${play.play_type || "—"}</td>
@@ -736,6 +745,42 @@
           alert("Couldn't publish: " + publishErr.message);
           btn.disabled = false;
           btn.textContent = "Approve & publish";
+          return;
+        }
+        await loadPlays(programId);
+      });
+    });
+
+    tbody.querySelectorAll(".hide-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const nextHidden = btn.dataset.hidden !== "true";
+        btn.disabled = true;
+        const { error: hideErr } = await supabase
+          .from("plays")
+          .update({ hidden: nextHidden })
+          .eq("id", btn.dataset.playId);
+        if (hideErr) {
+          alert("Couldn't update: " + hideErr.message);
+          btn.disabled = false;
+          return;
+        }
+        await loadPlays(programId);
+      });
+    });
+
+    tbody.querySelectorAll(".delete-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Permanently delete "${btn.dataset.playTitle}"? This can't be undone.`)) return;
+        btn.disabled = true;
+        btn.textContent = "Deleting...";
+        const { error: deleteErr } = await supabase
+          .from("plays")
+          .delete()
+          .eq("id", btn.dataset.playId);
+        if (deleteErr) {
+          alert("Couldn't delete: " + deleteErr.message);
+          btn.disabled = false;
+          btn.textContent = "Delete";
           return;
         }
         await loadPlays(programId);
