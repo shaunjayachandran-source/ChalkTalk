@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
   const { data: play, error: playErr } = await service
     .from("plays")
-    .select("id, program_id, storage_url, status")
+    .select("id, program_id, storage_url, status, hidden")
     .eq("id", playId)
     .maybeSingle();
 
@@ -84,7 +84,8 @@ export default async function handler(req, res) {
       !link.revoked_at &&
       (!link.expires_at || new Date(link.expires_at) > new Date()) &&
       link.program_id === play.program_id &&
-      play.status === "published"
+      play.status === "published" &&
+      !play.hidden
     ) {
       authorized = true;
     }
