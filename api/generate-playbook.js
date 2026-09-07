@@ -73,11 +73,63 @@ const PLAYER_COLORS = {
   5: { fill: "#e03a2e", stroke: "#ff7b6e" },
 };
 
-const PHASE_SYSTEM_PROMPT = `You are a master basketball coach and visual communications expert. You generate ONE PHASE of an interactive basketball playbook -- just the SVG diagram and sidebar content for this single phase, not the full page.
+// Real court art assets -- see the project's court-asset-level-mapping.md:
+// exactly two art buckets exist (not one per level), grouped as "hs" (youth,
+// middle school, high school) and "pro" (prep, college, pro -- regardless of
+// gender). Hosted as static files on the main site rather than embedded as
+// base64 in this source file, since the base64 text (100KB+ combined) is
+// impractical to hand-edit/verify through GitHub's web editor -- referenced
+// here by absolute URL so it resolves correctly even though generated plays
+// are served from a different origin (Vercel Blob), not this site.
+const COURT_ASSET_BASE = "https://chalktalk-sand.vercel.app/assets/courts";
+
+function courtLevelBucket(level) {
+  return level === "college" || level === "pro" || level === "prep" ? "pro" : "hs";
+}
+
+// Placement rects for each asset -- NOT uniform, because the source images
+// have different real aspect ratios (half-court HS 336x300 vs Pro 366x371;
+// full-court vertical HS 336x570 vs Pro 366x640). Each rect is a centered
+// "contain" fit of that specific image into its viewBox's available court
+// area, computed directly from the actual asset dimensions.
+const COURT_IMAGES = {
+  half: {
+    hs: {
+      down: { file: "half-hs-down.png", x: 36.0, y: 8.0, width: 448.0, height: 400.0 },
+      up: { file: "half-hs-up.png", x: 36.0, y: 8.0, width: 448.0, height: 400.0 },
+    },
+    pro: {
+      down: { file: "half-pro-down.png", x: 62.7, y: 8.0, width: 394.6, height: 400.0 },
+      up: { file: "half-pro-up.png", x: 62.7, y: 8.0, width: 394.6, height: 400.0 },
+    },
+  },
+  full: {
+    hs: { file: "full-hs-vertical.png", x: 123.2, y: 4.0, width: 273.5, height: 464.0 },
+    pro: { file: "full-pro-vertical.png", x: 127.3, y: 4.0, width: 265.3, height: 464.0 },
+  },
+};
+
+// Builds the deterministic court background + the correct viewBox for this
+// play -- Claude no longer draws the court at all, it only returns the
+// player/arrow/screen overlay layer (see PHASE_SYSTEM_PROMPT below). Returns
+// an OPEN <svg> tag (with the court image already inside it) -- the caller
+// appends the phase's overlay content and the closing </svg>.
+function buildCourtSvgOpen(brief) {
+  const bucket = courtLevelBucket(brief.level);
+  const isFull = brief.courtType === "full";
+  const viewBox = isFull ? "0 0 520 500" : "0 0 520 420";
+  const entry = isFull ? COURT_IMAGES.full[bucket] : COURT_IMAGES.half[bucket][brief.basketOrientation === "up" ? "up" : "down"];
+  const image = `<image href="${COURT_ASSET_BASE}/${entry.file}" x="${entry.x}" y="${entry.y}" width="${entry.width}" height="${entry.height}" preserveAspectRatio="xMidYMid meet"/>`;
+  return `<svg viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg">${image}`;
+}
+
+const PHASE_SYSTEM_PROMPT = `You are a master basketball coach and visual communications expert. You generate ONE PHASE of an interactive basketball playbook -- just the player/arrow/screen overlay and sidebar content for this single phase, not the full page and NOT the court itself.
+
+IMPORTANT: the court background (outline, key, free-throw circle, three-point line, basket, backboard) is a real embedded court image added by the code, not drawn by you. Your diagramSvg is ONLY the overlay layer -- players, movement lines, screens, the ball dot, and the footer caption bar -- positioned using the same coordinate system the anchors below describe, as if that court were present, even though you're not drawing it.
 
 Return ONLY valid JSON, no markdown fences, no preamble. Match this exact schema:
 {
-  "diagramSvg": "<svg>...</svg> markup as a string",
+  "diagramSvg": "SVG fragment as a string -- player circles, movement lines, screens, ball dot, footer caption bar ONLY. Do NOT include an outer <svg> tag, a viewBox, or any court outline/key/three-point-line/basket -- the code supplies all of that.",
   "sidebarHtml": "HTML fragment as a string (no <html>/<body> wrapper)"
 }
 
@@ -85,24 +137,14 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 
 
 ## SVG Diagram Rules
-- Half-court viewBox "0 0 520 420" (or "0 0 520 500" for full court). You'll be told this phase's basket position: DOWN (default) or UP. Draw a simple court outline using whichever anchor set matches -- rect border, key/paint rectangle, free-throw circle, three-point line, basket, backboard line -- all in stroke #27364a, fill none, stroke-width 1.5-2:
-  DOWN: key/paint rect x=207 y=285 width=106 height=112 (baseline ~397), free-throw circle cx=260 cy=285 r=53, basket circle cy=375, backboard line y=385. Three-point line: see the construction rule below.
-  UP: key/paint rect x=207 y=23 width=106 height=112 (baseline ~23, opening toward the top), free-throw circle cx=260 cy=135 r=53, basket circle cy=45, backboard line y=35. Three-point line: see the construction rule below.
-  Full court: defensive basket (top) -- baseline y=6, backboard y=18, basket cy=28, key x=207 y=6 width=106 height=112. Attacking basket (bottom) -- baseline y=494, backboard y=482, basket cy=472, key x=207 y=382 width=106 height=112. Half-court line y=252, center circle cx=260 cy=252 r=30.
-- Three-point line: always a true circular arc centered on that basket, never a generic curve. Scale: 8.83 SVG units = 1 real foot (matches the key's 106-unit width = 12 ft). Use these real distances from the basket, by this play's coaching level (top-of-arc distance / corner distance):
-  youth or high-school: 19'9" (19.75 ft), uniform -- top and corner are the same distance.
-  college: 22'2" (22.15 ft) top, 21'8" (21.67 ft) corner.
-  pro: 23'9" (23.75 ft) top, 22'0" (22.0 ft) corner.
-  prep: same as college -- 22'2" (22.15 ft) top, 21'8" (21.67 ft) corner.
-  Construction: topR = topFeet * 8.83, cornerX = cornerFeet * 8.83. Straight corner segments run parallel to the sideline at basket_cx +/- cornerX, from the baseline up to where that line meets the topR-radius circle centered on the basket (transition height = basket_cy -/+ sqrt(topR^2 - cornerX^2), sign matching which way the court extends from that basket). Draw: straight line from the baseline to that transition point, an elliptical arc (rx=ry=topR) across the top to the mirrored transition point, then straight back down to the baseline on the other side.
-- Player circles r=18, font-size=17, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
-- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
+- Coordinate system: half-court is 520x420 (or 520x500 for full court), matching the real court image already placed underneath your overlay. You'll be told this phase's basket position: DOWN (default) or UP. Use the anchor coordinates below exactly -- they're calibrated to the actual court image, not something you need to re-derive.
+- Player circles r=13, font-size=13, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=6, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
   - Dribbling with the ball: a tight, high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
   - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.
   Players who don't move: solid circle only, no ghost, no line.
-- Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel at that point -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
-- Court outline fill is always exactly "none" -- never a color -- on every element (border rect, key rect, free-throw circle, arc), on every phase, so the court looks visually identical across every tab.
+- Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel AT THAT CONTACT POINT (not their overall start-to-end direction) -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
 - Marker/gradient IDs: every phase must use its own unique IDs, prefixed with the phase number, so multiple phases' SVGs sitting in the same page never collide (e.g. phase 2's gold arrow marker id="p2-au"). Use these two-letter color codes for arrow/gradient markers: au=gold, ag=green, ab=blue, ar=red, ap=purple, at=teal -- matching the player's stroke color for that arrow. Example: phase 3's blue player's dribble-path arrowhead is id="p3-ab".
@@ -126,7 +168,6 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 - One ".bbridge" div explaining the structural connection to the NEXT phase (omit entirely if this is the final phase -- the caller will tell you if it is).
 - Voice: PLAYERS get direct/actionable language, COACHES get technical/reads-based language, both woven into the coaching points. Frame common errors as "what the defense wants," never player failure. Use they/them, no he/him defaults. Calibrate depth to coaching level (youth = more analogy fewer reads; college/pro = full tactical depth, more defensive reads/counters).
 - All output pure ASCII -- use HTML entities for anything outside standard ASCII (&mdash; &ldquo; &rdquo; &rarr; etc.)`;
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, { error: "Method not allowed" }, 405);
@@ -374,10 +415,12 @@ function buildShellHtml(brief, phaseResults) {
     )
     .join("\n");
 
+  const courtSvgOpen = buildCourtSvgOpen(brief);
+
   const diagrams = phaseResults
     .map(
       (p, i) =>
-        `<div class="phase-diagram${i === 0 ? " active" : ""}" id="pd-${p.phaseNumber}">${p.diagramSvg}</div>`
+        `<div class="phase-diagram${i === 0 ? " active" : ""}" id="pd-${p.phaseNumber}">${courtSvgOpen}${p.diagramSvg}</svg></div>`
     )
     .join("\n");
 
