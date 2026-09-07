@@ -261,7 +261,51 @@ export default async function handler(req, res) {
 
   return sendJson(res, { url: blobResult.url, playId: playRow.id, status: initialStatus });
 }
-
+// Anthropic's raw SVG/HTML fields inside the phase JSON response often
+// contain literal newlines (the model formats multi-line markup for
+// readability), which the JSON spec forbids unescaped inside a string --
+// that's the "Bad control character in string literal" parse failure.
+// Walk the text and escape control characters, but ONLY while inside a
+// string literal, so real structural whitespace between JSON tokens is
+// left alone.
+function sanitizeJsonControlChars(text) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        out += ch;
+        inString = false;
+        continue;
+      }
+      const code = text.charCodeAt(i);
+      if (code < 0x20) {
+        if (ch === "\n") out += "\\n";
+        else if (ch === "\r") out += "\\r";
+        else if (ch === "\t") out += "\\t";
+        else out += "\\u" + code.toString(16).padStart(4, "0");
+        continue;
+      }
+      out += ch;
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
+}
 async function generatePhaseContent(phase, brief, isFinalPhase) {
   const userPrompt = `Generate the diagram and sidebar for this phase.
 
@@ -309,7 +353,7 @@ ${JSON.stringify(phase, null, 2)}`;
 
 let parsed;
   try {
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(sanitizeJsonControlChars(cleaned));
   } catch (err) {
     throw new Error(`Invalid JSON for phase ${phase.phaseNumber}: ${err.message}`);
   }
