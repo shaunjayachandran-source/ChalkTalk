@@ -45,8 +45,8 @@ Court coordinate system (half-court, viewBox 0 0 520 420 — use these ranges wh
 
 DOWN (basket at bottom):
 - Basket is at approximately x=260, y=375
-- Elbows: left x=180 y=285, right x=340 y=285
-- Blocks: left x=207 y=390, right x=313 y=390
+- Elbows: left x=207 y=285, right x=313 y=285
+- Blocks: left x=207 y=338, right x=313 y=338
 - Short corner: left x=132 y=385, right x=388 y=385
 - Wings: left x=90 y=250, right x=430 y=250
 - Top of key / slots: y≈205
@@ -55,8 +55,8 @@ DOWN (basket at bottom):
 
 UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
 - Basket is at approximately x=260, y=45
-- Elbows: left x=180 y=135, right x=340 y=135
-- Blocks: left x=207 y=30, right x=313 y=30
+- Elbows: left x=207 y=135, right x=313 y=135
+- Blocks: left x=207 y=82, right x=313 y=82
 - Short corner: left x=132 y=35, right x=388 y=35
 - Wings: left x=90 y=170, right x=430 y=170
 - Top of key / slots: y≈215
