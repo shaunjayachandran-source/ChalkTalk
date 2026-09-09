@@ -309,7 +309,7 @@
     if (!SR) {
       btn.disabled = true;
       btn.title = "Voice input isn't supported in this browser — please type.";
-      return;
+      return { stop: () => {} };
     }
 
     const recognition = new SR();
@@ -346,7 +346,25 @@
         btn.textContent = '🎤 Speak';
       }
     });
+
+    // Exposed so the page can force the mic off once a screen transition
+    // happens (analyze finishing, build finishing) rather than relying on
+    // the coach remembering to click Stop -- recognizing must flip to
+    // false BEFORE recognition.stop() so the onend handler above doesn't
+    // just restart it (that's the auto-restart continuous mode needs).
+    return {
+      stop: () => {
+        if (recognizing) {
+          recognizing = false;
+          recognition.stop();
+          btn.textContent = '🎤 Speak';
+        }
+      },
+    };
   }
+
+  const descriptionVoice = initVoiceInput('description', 'micBtn');
+  const correctionVoice = initVoiceInput('correction', 'correctionMicBtn');
 
   initVoiceInput('description', 'micBtn');
   initVoiceInput('correction', 'correctionMicBtn');
@@ -576,6 +594,8 @@
       renderPreview(currentBrief);
       builderForm.classList.add('hidden');
       previewSection.classList.remove('hidden');
+      descriptionVoice.stop();
+      correctionVoice.stop();
     } catch (err) {
       showError('Network error — please try again.');
     } finally {
@@ -858,6 +878,8 @@
         headers: { 'Authorization': 'Bearer ' + currentSession.access_token },
       });
       const html = await viewRes.text();
+      descriptionVoice.stop();
+      correctionVoice.stop();
       document.open();
       document.write(html);
       document.close();
