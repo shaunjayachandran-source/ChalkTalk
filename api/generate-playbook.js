@@ -87,25 +87,26 @@ function courtLevelBucket(level) {
   return level === "college" || level === "pro" || level === "prep" ? "pro" : "hs";
 }
 
-// Placement rects for each asset -- NOT uniform, because the source images
-// have different real aspect ratios (half-court HS 336x300 vs Pro 366x371;
-// full-court vertical HS 336x570 vs Pro 366x640). Each rect is a centered
-// "contain" fit of that specific image into its viewBox's available court
-// area, computed directly from the actual asset dimensions.
-const COURT_IMAGES = {
+// Fixed placement rects, matching the proven reference implementation
+// (melo15u.vercel.app) exactly: ONE rect per court type, used for every
+// asset regardless of that asset's native aspect ratio. preserveAspectRatio
+// "none" stretches the image to fill the rect exactly rather than centering
+// it proportionally -- this is what lets a single set of named position
+// anchors (elbow, block, corner, etc. below) stay valid across every real
+// court image instead of needing per-asset recalibration.
+const COURT_PLACEMENT = {
+  half: { x: 15, y: 110, width: 489, height: 287 },
+  full: { x: 8, y: 4, width: 504, height: 464 },
+};
+
+const COURT_FILES = {
   half: {
-    hs: {
-      down: { file: "half-hs-down.png", x: 36.0, y: 8.0, width: 448.0, height: 400.0 },
-      up: { file: "half-hs-up.png", x: 36.0, y: 8.0, width: 448.0, height: 400.0 },
-    },
-    pro: {
-      down: { file: "half-pro-down.png", x: 62.7, y: 8.0, width: 394.6, height: 400.0 },
-      up: { file: "half-pro-up.png", x: 62.7, y: 8.0, width: 394.6, height: 400.0 },
-    },
+    hs: { down: "half-hs-down.png", up: "half-hs-up.png" },
+    pro: { down: "half-pro-down.png", up: "half-pro-up.png" },
   },
   full: {
-    hs: { file: "full-hs-vertical.png", x: 123.2, y: 4.0, width: 273.5, height: 464.0 },
-    pro: { file: "full-pro-vertical.png", x: 127.3, y: 4.0, width: 265.3, height: 464.0 },
+    hs: "full-hs-vertical.png",
+    pro: "full-pro-vertical.png",
   },
 };
 
@@ -118,8 +119,9 @@ function buildCourtSvgOpen(brief) {
   const bucket = courtLevelBucket(brief.level);
   const isFull = brief.courtType === "full";
   const viewBox = isFull ? "0 0 520 500" : "0 0 520 420";
-  const entry = isFull ? COURT_IMAGES.full[bucket] : COURT_IMAGES.half[bucket][brief.basketOrientation === "up" ? "up" : "down"];
-  const image = `<image href="${COURT_ASSET_BASE}/${entry.file}" x="${entry.x}" y="${entry.y}" width="${entry.width}" height="${entry.height}" preserveAspectRatio="xMidYMid meet"/>`;
+  const rect = isFull ? COURT_PLACEMENT.full : COURT_PLACEMENT.half;
+  const file = isFull ? COURT_FILES.full[bucket] : COURT_FILES.half[bucket][brief.basketOrientation === "up" ? "up" : "down"];
+  const image = `<image href="${COURT_ASSET_BASE}/${file}" x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="none"/>`;
   return `<svg viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg">${image}`;
 }
 
@@ -138,28 +140,28 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 
 ## SVG Diagram Rules
 - Coordinate system: half-court is 520x420 (or 520x500 for full court), matching the real court image already placed underneath your overlay. You'll be told this phase's basket position: DOWN (default) or UP. Use the anchor coordinates below exactly -- they're calibrated to the actual court image, not something you need to re-derive.
-- Player circles r=13, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
-- REQUIRED on every player circle: immediately after the <circle>, add a matching <text> element showing that player's jersey number, centered exactly on it (x/y equal to the circle's cx/cy, text-anchor='middle', dy='0.35em', font-family='Bebas Neue, sans-serif', font-size=13, font-weight='700', fill='#ffffff', stroke='#0d1017', stroke-width='2', paint-order='stroke fill' -- the stroke keeps the number legible against every fill color). Example: <circle cx='180' cy='285' r='13' class='pc' fill='#f0b429' stroke='#ffd060' data-l='...' data-t='...'/><text x='180' y='285' text-anchor='middle' dy='0.35em' font-family='Bebas Neue, sans-serif' font-size='13' font-weight='700' fill='#ffffff' stroke='#0d1017' stroke-width='2' paint-order='stroke fill'>1</text>. Never render a bare colored circle with no visible number.
-- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=6, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
+- Player circles r=9, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+- REQUIRED on every player circle: immediately after the <circle>, add a matching <text> element showing that player's jersey number, centered exactly on it (x/y equal to the circle's cx/cy, text-anchor='middle', dy='0.35em', font-family='Bebas Neue, sans-serif', font-size=10). Fill color depends on which player it is (contrast against that player's circle color): player 1 (gold) uses fill='#0d1017' (dark); players 2, 3, 4, and 5 (green, blue, purple, red) use fill='white'. Example for player 1: <circle cx='260' cy='185' r='9' class='pc' fill='#f0b429' stroke='#ffd060' stroke-width='1.6' data-l='...' data-t='...'/><text x='260' y='188.5' text-anchor='middle' dy='0.35em' font-family='Bebas Neue, sans-serif' font-size='10' fill='#0d1017'>1</text>. Never render a bare colored circle with no visible number.
+- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8) at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). The ghost circle uses a soft tinted look, not a plain outline: fill and stroke both use that player's own circle-fill color as an rgba with reduced opacity -- fill at .18 opacity, stroke at .65 opacity, stroke-width 1.4, stroke-dasharray "3,3". Use these exact rgba values per player: 1 (gold) rgba(240,180,41,.18) fill / rgba(240,180,41,.65) stroke; 2 (green) rgba(39,174,96,.18) / rgba(39,174,96,.65); 3 (blue) rgba(42,106,232,.18) / rgba(42,106,232,.65); 4 (purple) rgba(155,89,182,.18) / rgba(155,89,182,.65); 5 (red) rgba(224,58,46,.18) / rgba(224,58,46,.65). Line style depends on movement type:
   - Dribbling with the ball: a tight, very high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
-  - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.  
+  - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.
 - Players who don't move: solid circle only, no ghost, no line.
 - Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel AT THAT CONTACT POINT (not their overall start-to-end direction) -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
 - Marker/gradient IDs: every phase must use its own unique IDs, prefixed with the phase number, so multiple phases' SVGs sitting in the same page never collide (e.g. phase 2's gold arrow marker id="p2-au"). Use these two-letter color codes for arrow/gradient markers: au=gold, ag=green, ab=blue, ar=red, ap=purple, at=teal -- matching the player's stroke color for that arrow. Example: phase 3's blue player's dribble-path arrowhead is id="p3-ab".
 - Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
-  Elbows: right cx=340, left cx=180 (elbow-level cy=285 for DOWN, cy=135 for UP).
+  Elbows: right cx=313, left cx=207 (elbow-level cy=285 for DOWN, cy=135 for UP).
   Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=65 for UP).
   Top slots (guard spots above the arc, e.g. wings relocating out of a corner): cy=205 for DOWN, cy=215 for UP.
   Center top (ball-handler's start spot at the top of the key): cx=260 (cy=185 for DOWN, cy=235 for UP).
-  Blocks (low lane spot right at the key, near the rim): right cx=313, left cx=207 (cy=390 for DOWN, cy=30 for UP).
+  Blocks (low lane spot right at the key, near the rim): right cx=313, left cx=207 (cy=338 for DOWN, cy=82 for UP).
   Short corner (between the block and the deep corner, still near the baseline): right cx=388, left cx=132 (cy=385 for DOWN, cy=35 for UP).
   Wings (outside the arc, between the corner and the top of the key): right cx=430, left cx=90 (cy=250 for DOWN, cy=170 for UP).
 - Named position anchors (full court) -- same spots, mirrored per basket:
-  Defensive basket (top): elbows cx=340/180 cy=118, corners cx=462/58 cy=48, blocks cx=313/207 cy=13, short corner cx=388/132 cy=18, wings cx=430/90 cy=153, top slots cy=198, center top cy=218.
-  Attacking basket (bottom): elbows cx=340/180 cy=382, corners cx=462/58 cy=452, blocks cx=313/207 cy=487, short corner cx=388/132 cy=482, wings cx=430/90 cy=347, top slots cy=302, center top cy=282.
+  Defensive basket (top): elbows cx=313/207 cy=118, corners cx=462/58 cy=48, blocks cx=313/207 cy=13, short corner cx=388/132 cy=18, wings cx=430/90 cy=153, top slots cy=198, center top cy=218.
+  Attacking basket (bottom): elbows cx=313/207 cy=382, corners cx=462/58 cy=452, blocks cx=313/207 cy=487, short corner cx=388/132 cy=482, wings cx=430/90 cy=347, top slots cy=302, center top cy=282.s cx=430/90 cy=347, top slots cy=302, center top cy=282.
   
 ## Sidebar HTML Rules
 - Wrap in a single top-level <div> (this fragment gets inserted into a container, don't repeat page chrome).
