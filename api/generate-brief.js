@@ -219,7 +219,14 @@ export default async function handler(req, res) {
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/```\s*$/i, "");
-    brief = JSON.parse(cleaned);
+    // Defensive: some responses add conversational preamble before the JSON
+    // despite the "no preamble" instruction (e.g. "Here is the brief...").
+    // Extract just the {...} object rather than trusting compliance alone.
+    const startMatch = cleaned.match(/\{\s*"/);
+    const firstBrace = startMatch ? startMatch.index : cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    const jsonSlice = firstBrace !== -1 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+    brief = JSON.parse(jsonSlice);
   } catch (err) {
     // If the model ran out of room mid-response (stop_reason "max_tokens"),
     // say so specifically -- that's a distinct, actionable problem ("ask
