@@ -143,7 +143,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 - Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=6, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
   - Dribbling with the ball: a tight, very high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
-  - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.  Players who don't move: solid circle only, no ghost, no line.
+  - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.  
+- Players who don't move: solid circle only, no ghost, no line.
 - Screens/picks: the screener's own circle stays put at their set position (no ghost/line needed for them). At the exact point where the cutter or dribbler's path meets the screener, draw a short straight "T-bar" segment (length ~14-16, stroke-width 2.5, matching the moving player's stroke color) perpendicular to that player's direction of travel AT THAT CONTACT POINT (not their overall start-to-end direction) -- this is the standard basketball-diagram symbol for a screen. Never omit it when the phase involves a screen or pick.
 - Ball dot r=6 fill=#ff6b00 stroke=white, placed just outside the ball-handler's circle on the side closest to the basket.
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
