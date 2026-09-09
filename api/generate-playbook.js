@@ -392,12 +392,6 @@ ${JSON.stringify(phase, null, 2)}`;
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "");
 
-  const cleaned = textBlock.text
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "");
-
   // Defensive: some responses add conversational preamble before the JSON
   // despite the "no preamble" instruction (e.g. "Here is the diagram...").
   // Extract just the {...} object rather than trusting compliance alone.
