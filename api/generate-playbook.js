@@ -138,9 +138,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 
 ## SVG Diagram Rules
 - Coordinate system: half-court is 520x420 (or 520x500 for full court), matching the real court image already placed underneath your overlay. You'll be told this phase's basket position: DOWN (default) or UP. Use the anchor coordinates below exactly -- they're calibrated to the actual court image, not something you need to re-derive.
-- Player circles r=13, font-size=13, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
-- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=6, fill none, stroke same color, stroke-dasharray "3,3") at their END position, plus a line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Line style depends on movement type:
-  - Dribbling with the ball: a tight, high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
+- Player circles r=13, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+- REQUIRED on every player circle: immediately after the <circle>, add a matching <text> element showing that player's jersey number, centered exactly on it (x/y equal to the circle's cx/cy, text-anchor='middle', dy='0.35em', font-family='Bebas Neue, sans-serif', font-size=13, font-weight='700', fill='#ffffff', stroke='#0d1017', stroke-width='2', paint-order='stroke fill' -- the stroke keeps the number legible against every fill color). Example: <circle cx='180' cy='285' r='13' class='pc' fill='#f0b429' stroke='#ffd060' data-l='...' data-t='...'/><text x='180' y='285' text-anchor='middle' dy='0.35em' font-family='Bebas Neue, sans-serif' font-size='13' font-weight='700' fill='#ffffff' stroke='#0d1017' stroke-width='2' paint-order='stroke fill'>1</text>. Never render a bare colored circle with no visible number.  - Dribbling with the ball: a tight, high-frequency zigzag/sine path (small back-and-forth segments along the route, not a straight line), stroke-width 2.5.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
   - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.
   Players who don't move: solid circle only, no ghost, no line.
@@ -302,6 +301,18 @@ export default async function handler(req, res) {
 
   return sendJson(res, { url: blobResult.url, playId: playRow.id, status: initialStatus });
 }
+
+// Defensive: the prompt tells the model NOT to include its own outer <svg>
+// tag (the code supplies the court + real <svg> wrapper already), but if
+// it does anyway, that nested tag brings its own coordinate system and
+// silently rescales/mispositions everything inside it. Strip it rather
+// than trusting compliance.
+function stripOuterSvgWrapper(fragment) {
+  const trimmed = (fragment || "").trim();
+  const match = trimmed.match(/^<svg\b[^>]*>([\s\S]*)<\/svg>\s*$/i);
+  return match ? match[1] : trimmed;
+}
+
 // Anthropic's raw SVG/HTML fields inside the phase JSON response often
 // contain literal newlines (the model formats multi-line markup for
 // readability), which the JSON spec forbids unescaped inside a string --
@@ -410,7 +421,7 @@ ${JSON.stringify(phase, null, 2)}`;
   return {
     phaseNumber: phase.phaseNumber,
     phaseName: phase.phaseName,
-    diagramSvg: parsed.diagramSvg || "",
+    diagramSvg: stripOuterSvgWrapper(parsed.diagramSvg) || "",
     sidebarHtml: parsed.sidebarHtml || "",
   };
 }
