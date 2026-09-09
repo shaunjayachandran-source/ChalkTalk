@@ -392,9 +392,23 @@ ${JSON.stringify(phase, null, 2)}`;
     .replace(/^```\s*/i, "")
     .replace(/```\s*$/i, "");
 
-let parsed;
+  const cleaned = textBlock.text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "");
+
+  // Defensive: some responses add conversational preamble before the JSON
+  // despite the "no preamble" instruction (e.g. "Here is the diagram...").
+  // Extract just the {...} object rather than trusting compliance alone.
+  const startMatch = cleaned.match(/\{\s*"/);
+  const firstBrace = startMatch ? startMatch.index : cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  const jsonSlice = firstBrace !== -1 && lastBrace > firstBrace ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+
+  let parsed;
   try {
-    parsed = JSON.parse(sanitizeJsonControlChars(cleaned));
+    parsed = JSON.parse(sanitizeJsonControlChars(jsonSlice));
   } catch (err) {
     throw new Error(`Invalid JSON for phase ${phase.phaseNumber}: ${err.message}`);
   }
