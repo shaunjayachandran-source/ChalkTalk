@@ -161,8 +161,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
   Wings (outside the arc, between the corner and the top of the key): right cx=430, left cx=90 (cy=250 for DOWN, cy=170 for UP).
 - Named position anchors (full court) -- same spots, mirrored per basket:
   Defensive basket (top): elbows cx=313/207 cy=118, corners cx=462/58 cy=48, blocks cx=313/207 cy=13, short corner cx=388/132 cy=18, wings cx=430/90 cy=153, top slots cy=198, center top cy=218.
-  Attacking basket (bottom): elbows cx=313/207 cy=382, corners cx=462/58 cy=452, blocks cx=313/207 cy=487, short corner cx=388/132 cy=482, wings cx=430/90 cy=347, top slots cy=302, center top cy=282.s cx=430/90 cy=347, top slots cy=302, center top cy=282.
-  
+Attacking basket (bottom): elbows cx=313/207 cy=382, corners cx=462/58 cy=452, blocks cx=313/207 cy=487, short corner cx=388/132 cy=482, wings cx=430/90 cy=347, top slots cy=302, center top cy=282.
+
 ## Sidebar HTML Rules
 - Wrap in a single top-level <div> (this fragment gets inserted into a container, don't repeat page chrome).
 - <h3> phase name in Title Case.
