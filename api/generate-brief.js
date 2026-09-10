@@ -52,7 +52,8 @@ DOWN (basket at bottom):
 - Top of key / slots: y≈205
 - Deep corners: left x=58 y=355, right x=462 y=355
 - Center top (above the arc): x=260 y=185
-
+- Free-throw line center (default start for a player who will screen at either elbow): x=260 y=285
+ 
 UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
 - Basket is at approximately x=260, y=45
 - Elbows: left x=207 y=135, right x=313 y=135
@@ -62,7 +63,8 @@ UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
 - Top of key / slots: y≈215
 - Deep corners: left x=58 y=65, right x=462 y=65
 - Center top (below the arc, toward mid-court): x=260 y=235
-
+- Free-throw line center (default start for a player who will screen at either elbow): x=260 y=135
+ 
 Court spans roughly x=15 to x=504, y=110 to y=397 either way.
 
 For full-court plays (viewBox 0 0 520 500), basket position doesn't apply (both baskets are always shown) -- defensive basket is near y=28, half-court line is y=252, attacking basket is near y=472. Scale positions proportionally.
@@ -98,7 +100,9 @@ Infer reasonable court positions even if the coach's description is imprecise �
 IMPORTANT: Every phase must include ALL FIVE offensive players (numbers 1-5), even if the coach only described the action for one or two of them. For players not mentioned in the coach's description, place them in sensible, realistic supporting positions for that phase (e.g. spacing the floor at the opposite wing, corner, or top, or holding a natural help/safety position) with startX/Y equal to endX/Y (they don't move) and an action like "Holds floor spacing on the [location]" or "Maintains position as a safety valve." Never omit a player just because the coach didn't mention them — a real possession always has 5 players on the court.
 
 CONTINUITY RULE (critical): a player's position cannot silently teleport between phases. For phase 2 onward, every player's startX/startY MUST exactly equal that same player's endX/endY from the immediately preceding phase — inherit their last known position, never re-guess it. Only phase 1 may set arbitrary starting positions. If a player's narrative changes in a later phase (e.g. a new cut, screen, or reversal), that phase's action/keyAction text must be consistent with wherever their carried-forward position actually is — never describe a movement that contradicts the position they were already left in.
-
+ 
+SCREENER POSITIONING RULE (critical): when a player's role in phase 1 is to set a screen at an elbow later in the play (rather than starting locked to a specific side), place their phase-1 startX/startY at the Free-throw line center anchor above (x=260, y=285 DOWN / y=135 UP) rather than guessing left or right — this lets them move cleanly to whichever elbow the play actually needs. When that player then sets the screen, their endX/endY for that phase MUST be the elbow on the SAME SIDE OF THE COURT AS THE BALL at that moment: compare the ball-handler's x position in that phase to court-center x=260 — if the ball-handler's x is less than 260, the screen happens at the LEFT elbow (x=207); if the ball-handler's x is 260 or greater, it happens at the RIGHT elbow (x=313). Never place a screen at the elbow opposite the ball. State this explicitly in that phase's action text (e.g. "Sets a screen at the ball-side elbow").
+ 
 HARD CAP: never generate more than 8 phases total, no matter how long or continuous the described action is (e.g. a full motion-offense cycle back to starting spots). If the play logically needs more to fully resolve, consolidate the least essential intermediate movements so the whole thing still fits in 8 phases or fewer -- a coach can always describe a follow-up play separately. This cap exists because the response has a fixed size budget; going over it produces a cut-off, invalid response instead of a complete one.`;
 
 export default async function handler(req, res) {
