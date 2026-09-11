@@ -48,6 +48,7 @@
 
 import { put } from "@vercel/blob";
 import { validateCoachSession } from "./_lib/validate-session.js";
+import { validatePhaseOutput } from "./_lib/validate-diagram.js";
 
 export const config = { maxDuration: 180 };
 
@@ -125,6 +126,15 @@ function buildCourtSvgOpen(brief) {
   return `<svg viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg">${image}`;
 }
 
+// KNOWN FAILURE MODES: before editing this prompt, read
+// claude/known-failure-modes.md in the ChalkTalk project (Claude
+// Projects -> ChalkTalk). It logs every diagram-generation bug found so
+// far, its root cause, and the fix commit -- so this prompt doesn't
+// re-drift into a bug already solved once. Log any new one you find or
+// fix here too. Every prompt change to this constant should also be
+// checked with validatePhaseOutput() (api/_lib/validate-diagram.js) on a
+// real generation before being called "fixed" -- a correct-looking
+// instruction is not the same as the model obeying it.
 const PHASE_SYSTEM_PROMPT = `You are a master basketball coach and visual communications expert. You generate ONE PHASE of an interactive basketball playbook -- just the player/arrow/screen overlay and sidebar content for this single phase, not the full page and NOT the court itself.
 
 IMPORTANT: the court background (outline, key, free-throw circle, three-point line, basket, backboard) is a real embedded court image added by the code, not drawn by you. Your diagramSvg is ONLY the overlay layer -- players, movement lines, screens, the ball dot, and the footer caption bar -- positioned using the same coordinate system the anchors below describe, as if that court were present, even though you're not drawing it.
@@ -141,10 +151,10 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 ## SVG Diagram Rules
 - Coordinate system: half-court is 520x420 (or 520x500 for full court), matching the real court image already placed underneath your overlay. You'll be told this phase's basket position: DOWN (default) or UP. Use the anchor coordinates below exactly -- they're calibrated to the actual court image, not something you need to re-derive.
 - REQUIRED, read this before placing anything: every player object in the "Phase data" JSON you're given already has exact startX/startY (where they begin this phase) and endX/endY (where they end, if they move) -- these numbers were computed by an earlier step specifically for this coordinate system and are already correct. Place every player's solid circle at EXACTLY their given startX/startY, and their ghost circle (if they move) at EXACTLY their given endX/endY. NEVER recompute, adjust, average, or substitute your own coordinate for a player based on their role, the named-anchor list further below, or your own basketball knowledge -- if a player's given position looks unusual for their described role, use it anyway; it is correct and was placed there deliberately by the previous step. The named-anchor list further below exists ONLY for drawing things that do NOT already have a coordinate in the phase data (for example, exactly where along a path a screen's contact point falls).
-- Player circles r=9, class="pc", with data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}.
+- Player circles r=9, class="pc", with data-player="<id>" (that player's number, e.g. "1") and data-role="start" (or "ghost" for a ghost circle -- see below) IN ADDITION TO data-l (short label e.g. "1 - POINT GUARD") and data-t (2-4 sentence coaching detail) attributes for tooltips. Fill/stroke per this mapping: ${JSON.stringify(PLAYER_COLORS)}. The data-player/data-role attributes on every circle and movement line are REQUIRED, not optional decoration -- an automated check reads them to confirm your output matches the phase data.
 - REQUIRED on every player circle: immediately after the <circle>, add a matching <text> element showing that player's jersey number, centered exactly on it (x/y equal to the circle's cx/cy, text-anchor='middle', dy='0.35em', font-family='Bebas Neue, sans-serif', font-size=10). Fill color depends on which player it is (contrast against that player's circle color): player 1 (gold) uses fill='#0d1017' (dark); players 2, 3, 4, and 5 (green, blue, purple, red) use fill='white'. Example for player 1: <circle cx='260' cy='185' r='9' class='pc' fill='#f0b429' stroke='#ffd060' stroke-width='1.6' data-l='...' data-t='...'/><text x='260' y='188.5' text-anchor='middle' dy='0.35em' font-family='Bebas Neue, sans-serif' font-size='10' fill='#0d1017'>1</text>. Never render a bare colored circle with no visible number.
-- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8) at their END position (using their given endX/endY -- see above), plus EXACTLY ONE line connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Never draw a second, different line for the same player in the same phase, even if their role could arguably involve more than one concept -- one player, one movement line, period. The ghost circle uses a soft tinted look, not a plain outline: fill and stroke both use that player's own circle-fill color as an rgba with reduced opacity -- fill at .18 opacity, stroke at .65 opacity, stroke-width 1.4, stroke-dasharray "3,3". Use these exact rgba values per player: 1 (gold) rgba(240,180,41,.18) fill / rgba(240,180,41,.65) stroke; 2 (green) rgba(39,174,96,.18) / rgba(39,174,96,.65); 3 (blue) rgba(42,106,232,.18) / rgba(42,106,232,.65); 4 (purple) rgba(155,89,182,.18) / rgba(155,89,182,.65); 5 (red) rgba(224,58,46,.18) / rgba(224,58,46,.65). Line style depends on movement type:
-  - Dribbling with the ball: REQUIRED to be a real zigzag with AT LEAST 4-6 short alternating segments along the ENTIRE route from start to end, stroke-width 2.5, fill='none' -- never a single straight line or a single bent line (that is a cut, not a dribble, and is a bug if labeled as a dribble). Build it as a multi-point path alternating a fixed offset (roughly 10-15px) to each side of the straight line between start and end, scaling the segment count to the route's length (a short route still needs at least 4 segments; a long route needs 6 or more). Worked example for a dribble from (260,285) to (207,135) -- a route about 150px long, split into 6 short zigzag segments: <path d='M260,285 L245,260 L272,238 L242,213 L272,188 L245,160 L207,135' stroke='#f0b429' stroke-width='2.5' fill='none' marker-end='url(#...)'/>. Never submit a dribble path with fewer than 4 line segments.
+- Solid circle = where player BEGINS the phase. If a player moves, add a ghost circle (r=8, with data-player="<id>" data-role="ghost") at their END position (using their given endX/endY -- see above), plus EXACTLY ONE line or path (with data-player="<id>" data-role="move") connecting start to end, with the arrowhead touching the ghost circle's edge (never floating in open space). Never draw a second, different line for the same player in the same phase, even if their role could arguably involve more than one concept -- one player, one movement line, period. The ghost circle uses a soft tinted look, not a plain outline: fill and stroke both use that player's own circle-fill color as an rgba with reduced opacity -- fill at .18 opacity, stroke at .65 opacity, stroke-width 1.4, stroke-dasharray "3,3". Use these exact rgba values per player: 1 (gold) rgba(240,180,41,.18) fill / rgba(240,180,41,.65) stroke; 2 (green) rgba(39,174,96,.18) / rgba(39,174,96,.65); 3 (blue) rgba(42,106,232,.18) / rgba(42,106,232,.65); 4 (purple) rgba(155,89,182,.18) / rgba(155,89,182,.65); 5 (red) rgba(224,58,46,.18) / rgba(224,58,46,.65). Line style depends on movement type:
+- Dribbling with the ball: REQUIRED to be a real zigzag with AT LEAST 4-6 short alternating segments along the ENTIRE route from start to end, stroke-width 2.5, fill='none' -- never a single straight line or a single bent line (that is a cut, not a dribble, and is a bug if labeled as a dribble). Build it as a multi-point path alternating a fixed offset (roughly 10-15px) to each side of the straight line between start and end, scaling the segment count to the route's length (a short route still needs at least 4 segments; a long route needs 6 or more). Worked example for a dribble from (260,285) to (207,135) -- a route about 150px long, split into 6 short zigzag segments: <path d='M260,285 L245,260 L272,238 L242,213 L272,188 L245,160 L207,135' stroke='#f0b429' stroke-width='2.5' fill='none' marker-end='url(#...)'/>. Never submit a dribble path with fewer than 4 line segments.
   - Cutting/relocating without the ball: a plain straight or gently curved solid line, stroke-width 2.0-2.5.
   - A pass: dashed line, stroke-dasharray "7,4", stroke-width 2.0.
 - Players who don't move: solid circle only, no ghost, no line.
@@ -305,8 +315,19 @@ export default async function handler(req, res) {
     console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
   }
 
-  return sendJson(res, { url: blobResult.url, playId: playRow.id, status: initialStatus });
-}
+  const diagramWarnings = phaseResults.flatMap((p) =>
+    (p.diagramIssues || []).map((issue) => `Phase ${p.phaseNumber} (${p.phaseName}): ${issue}`)
+  );
+  if (diagramWarnings.length) {
+    console.warn(`[generate-playbook] play ${playRow.id} has ${diagramWarnings.length} diagram validation warning(s).`);
+  }
+ 
+  return sendJson(res, {
+    url: blobResult.url,
+    playId: playRow.id,
+    status: initialStatus,
+    diagramWarnings: diagramWarnings.length ? diagramWarnings : undefined,
+  });}
 
 // Defensive: the prompt tells the model NOT to include its own outer <svg>
 // tag (the code supplies the court + real <svg> wrapper already), but if
@@ -424,11 +445,25 @@ ${JSON.stringify(phase, null, 2)}`;
     throw new Error(`Invalid JSON for phase ${phase.phaseNumber}: ${err.message}`);
   }
 
+  const diagramSvg = stripOuterSvgWrapper(parsed.diagramSvg) || "";
+ 
+  // Deterministic check, not another LLM call -- see
+  // api/_lib/validate-diagram.js and claude/known-failure-modes.md.
+  // Non-blocking for now (log + surface, don't fail the request): a false
+  // positive here shouldn't stop a coach from getting their playbook, but
+  // a real miss should be visible in Vercel logs and in the response
+  // immediately, not discovered later from a screenshot.
+  const { ok: diagramOk, issues: diagramIssues } = validatePhaseOutput(phase, diagramSvg);
+  if (!diagramOk) {
+    console.warn(`[generate-playbook] phase ${phase.phaseNumber} diagram validation found ${diagramIssues.length} issue(s):`, diagramIssues);
+  }
+ 
   return {
     phaseNumber: phase.phaseNumber,
     phaseName: phase.phaseName,
-    diagramSvg: stripOuterSvgWrapper(parsed.diagramSvg) || "",
+    diagramSvg,
     sidebarHtml: parsed.sidebarHtml || "",
+    diagramIssues,
   };
 }
 
