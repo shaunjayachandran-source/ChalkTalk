@@ -248,6 +248,13 @@
       <div class="pt-meta">${escapeHtml(phaseCount)} phase${phaseCount === 1 ? "" : "s"} &middot; ${escapeHtml(court)} court</div>
     `;
     div.addEventListener("click", () => {
+      // A logged-in, authorized coach gets opts.onOpen wired up by the page
+      // (see getPlaysForViewer/makePlayOpener below) -- everyone else still
+      // gets the existing "ask your coach" modal, unchanged.
+      if (opts.onOpen) {
+        opts.onOpen(play);
+        return;
+      }
       const modal = document.getElementById("access-modal");
       if (modal) modal.style.display = "flex";
     });
@@ -273,7 +280,81 @@
       });
     }
   }
-
+ 
+  // Coach-aware play list. Checks for an active Supabase Auth session; if
+  // the visitor is a real, logged-in coach with a program_coaches row for
+  // this program, reads the real `plays` table directly (RLS already
+  // restricts this to their own program's roster) instead of the public
+  // `play_directory` view, and returns the session's access token so the
+  // page can open real play content instead of showing the private-play
+  // modal. Every other visitor (not logged in, or logged in but not on
+  // this program's roster) gets back exactly the same anonymous
+  // play_directory result as before -- this never widens what the public
+  // page shows, it only adds a path for an already-authorized coach.
+  async function getPlaysForViewer(supabase, programId, viewColumns) {
+    let accessToken = null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData && sessionData.session;
+      if (session) {
+        const { data: membership } = await supabase
+          .from("program_coaches")
+          .select("id")
+          .eq("program_id", programId)
+          .eq("coach_id", session.user.id)
+          .maybeSingle();
+        if (membership) accessToken = session.access_token;
+      }
+    } catch (err) {
+      // Never let a session-check failure break the public page -- fall
+      // through to the same anonymous view every visitor already gets.
+    }
+ 
+    if (accessToken) {
+      const { data } = await supabase
+        .from("plays")
+        .select("id, " + viewColumns)
+        .eq("program_id", programId)
+        .eq("status", "published")
+        .eq("hidden", false);
+      return { plays: data || [], accessToken };
+    }
+ 
+    const { data } = await supabase
+      .from("play_directory")
+      .select(viewColumns)
+      .eq("program_id", programId);
+    return { plays: data || [], accessToken: null };
+  }
+ 
+  // Returns a click handler for playCard (and for a search result's
+  // onSelect) that opens the real play via api/view-play.js when the
+  // viewer is an authorized coach (accessToken set), or falls back to the
+  // existing private-play modal for everyone else.
+  function makePlayOpener(accessToken) {
+    return async function openPlay(play) {
+      if (!accessToken || !play.id) {
+        const modal = document.getElementById("access-modal");
+        if (modal) modal.style.display = "flex";
+        return;
+      }
+      try {
+        const res = await fetch(`/api/view-play?playId=${encodeURIComponent(play.id)}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const html = await res.text();
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+        }
+      } catch (err) {
+        alert("Couldn't open this play: " + err.message);
+      }
+    };
+  }
+ 
   // Renders the sticky section-nav shared across the hub + all 5 subpages.
   // `activeKey` is null on the hub (no section active yet).
   function renderSectionNav(slug, activeKey) {
@@ -411,6 +492,8 @@
     playCard,
     ghostCard,
     wireAccessModal,
+    getPlaysForViewer,
+    makePlayOpener,
     renderSectionNav,
     initSearch,
     subgroupLabel,
