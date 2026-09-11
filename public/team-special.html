@@ -79,11 +79,12 @@
       return;
     }
 
-    const { data: playsData } = await supabase
-      .from("play_directory")
-      .select("title, play_type, phase_count, court_type, updated_at")
-      .eq("program_id", program.id);
-    const plays = playsData || [];
+    const { plays, accessToken } = await CT.getPlaysForViewer(
+      supabase,
+      program.id,
+      "title, play_type, phase_count, court_type, updated_at"
+    );
+    const openPlay = CT.makePlayOpener(accessToken);
     const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
 
     CT.applyAccent(program);
@@ -95,7 +96,7 @@
 
     const grid = document.getElementById("special-content");
     if (catPlays.length) {
-      catPlays.forEach((p) => grid.appendChild(CT.playCard(p)));
+      catPlays.forEach((p) => grid.appendChild(CT.playCard(p, { onOpen: openPlay })));
     } else {
       grid.appendChild(CT.ghostCard(`No ${LABEL} calls yet`, "Runs through Intake Mode will show up here."));
     }
@@ -104,7 +105,7 @@
       label: p.title,
       hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
       section: LABEL,
-      onSelect: () => document.getElementById("access-modal").style.display = "flex",
+      onSelect: () => openPlay(p),
     }));
     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
 
