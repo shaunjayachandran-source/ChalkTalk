@@ -79,11 +79,12 @@
       return;
     }
 
-    const { data: playsData } = await supabase
-      .from("play_directory")
-      .select("title, play_type, sub_category, phase_count, court_type, updated_at")
-      .eq("program_id", program.id);
-    const plays = playsData || [];
+    const { plays, accessToken } = await CT.getPlaysForViewer(
+      supabase,
+      program.id,
+      "title, play_type, sub_category, phase_count, court_type, updated_at"
+    );
+    const openPlay = CT.makePlayOpener(accessToken);
     const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
 
     CT.applyAccent(program);
@@ -130,7 +131,7 @@
         const grid = document.createElement("div");
         grid.className = "grid";
         if (items.length) {
-          items.forEach((p) => grid.appendChild(CT.playCard(p)));
+         items.forEach((p) => grid.appendChild(CT.playCard(p, { onOpen: openPlay })));
         } else {
           grid.appendChild(CT.ghostCard(`No ${sub.toLowerCase()} sets yet`, "Runs through Intake Mode will show up here."));
         }
@@ -143,7 +144,7 @@
       hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
       section: "Defense",
       sub: CT.subgroupLabel(p.sub_category) || "",
-      onSelect: () => document.getElementById("access-modal").style.display = "flex",
+      onSelect: () => openPlay(p),
     }));
     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
 
