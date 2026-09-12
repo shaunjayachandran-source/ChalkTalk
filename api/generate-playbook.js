@@ -171,7 +171,8 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
   Free-throw line center (default start for a player who will screen at either elbow): cx=260 (cy=285 for DOWN, cy=222 for UP).
   Blocks (low lane spot right at the key, near the rim): right cx=313, left cx=207 (cy=338 for DOWN, cy=169 for UP).
   Short corner (between the block and the deep corner, still near the baseline): right cx=388, left cx=132 (cy=385 for DOWN, cy=122 for UP).
-  Wings (outside the arc, between the corner and the top of the key): right cx=430, left cx=90 (cy=250 for DOWN, cy=257 for UP).
+  Wings (outside the arc, between the corner and the top of the key -- use only for wing-specific formations like a 1-3-1 or flex, NOT as a stand-in for 4-out/5-out slot spacing): right cx=430, left cx=90 (cy=250 for DOWN, cy=257 for UP).
+  Slot (elevated guard spot for a 4-out/5-out alignment, well beyond the arc -- verified against the real 3pt arc, which is an ellipse centered at cx=260 cy=350 DOWN / cy=157 UP with radius ~190 horizontal / ~110 vertical): right cx=385, left cx=135 (cy=200 for DOWN, cy=307 for UP). A 4-out/5-out set's two non-corner perimeter players belong HERE, not at Wings.
 - Named position anchors (full court) -- same spots, mirrored per basket:
   Defensive basket (top): elbows cx=313/207 cy=118, corners cx=462/58 cy=48, blocks cx=313/207 cy=13, short corner cx=388/132 cy=18, wings cx=430/90 cy=153, top slots cy=198, center top cy=218.
   Attacking basket (bottom): elbows cx=313/207 cy=382, corners cx=462/58 cy=452, blocks cx=313/207 cy=487, short corner cx=388/132 cy=482, wings cx=430/90 cy=347, top slots cy=302, center top cy=282.
