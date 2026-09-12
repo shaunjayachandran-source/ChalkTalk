@@ -60,14 +60,57 @@ function hasCurveCommand(pathTag) {
   const d = extractAttr(pathTag, "d") || "";
   return /[QCTS]/i.test(d);
 }
-
+ 
+// Keep in sync with COURT_PLACEMENT (and COURT_PLACEMENT.full) in
+// api/generate-playbook.js -- these define where the real court image is
+// actually drawn inside the 520x420 (half) / 520x500 (full) viewBox.
+// Anything outside this rectangle renders in the black background above
+// or around the court, not on it -- see claude/known-failure-modes.md.
+const COURT_RECTS = {
+  half: { x: 15, y: 110, width: 489, height: 287 },
+  full: { x: 8, y: 4, width: 504, height: 464 },
+};
+ 
+// Checks that every player's GIVEN phase-data coordinate (not just what
+// the SVG drew) actually falls inside the visible court rectangle. This
+// catches the root problem even when the SVG faithfully reproduces a bad
+// coordinate it was handed -- the per-element checks above only ever
+// compare the SVG against the phase data, never the phase data against
+// where the court art actually is.
+function validateCourtBounds(phase, courtType) {
+  const issues = [];
+  const rect = COURT_RECTS[courtType] || COURT_RECTS.half;
+  const players = phase.players || [];
+  for (const p of players) {
+    const id = p.id ?? p.number;
+    if (id === undefined || id === null) continue;
+    const checks = [
+      ["start", p.startX, p.startY],
+      ["end", p.endX, p.endY],
+    ];
+    for (const [label, x, y] of checks) {
+      if (x === undefined || y === undefined || x === null || y === null) continue;
+      if (x < rect.x || x > rect.x + rect.width || y < rect.y || y > rect.y + rect.height) {
+        issues.push(
+          `Player ${id}: ${label} position (${x},${y}) falls outside the visible ${courtType}-court rectangle ` +
+          `(x:${rect.x}-${rect.x + rect.width}, y:${rect.y}-${rect.y + rect.height}) -- this player will render ` +
+          `off the court art, in the black background.`
+        );
+      }
+    }
+  }
+  return issues;
+}
+ 
 /**
  * @param {object} phase - the brief's phase object: { phaseNumber, players: [{id, startX, startY, endX, endY, action}, ...], ... }
  * @param {string} svg - the generated (already-stripped) SVG fragment for this phase
+ * @param {string} [courtType="half"] - "half" or "full", from the brief -- picks which court rectangle to bounds-check against
  * @returns {{ok: boolean, issues: string[]}}
  */
-export function validatePhaseOutput(phase, svg) {
+export function validatePhaseOutput(phase, svg, courtType = "half") {
   const issues = [];
+  issues.push(...validateCourtBounds(phase, courtType));
   const players = phase.players || [];
 
   for (const p of players) {
