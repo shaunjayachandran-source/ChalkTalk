@@ -48,8 +48,17 @@ function num(tag, attr) {
 // A path "M x,y L x,y L x,y ..." with N points has N-1 segments.
 function countPathSegments(pathTag) {
   const d = extractAttr(pathTag, "d") || "";
-  const points = d.match(/[ML]\s*-?\d/gi) || [];
+  const points = d.match(/[MLQCTS]\s*-?\d/gi) || [];
   return Math.max(points.length - 1, 0);
+}
+ 
+// A dribble path built only from M/L (straight line-to) commands is a
+// jagged zigzag with hard corners -- it reads as a lightning bolt, not a
+// dribble (see claude/known-failure-modes.md). A real dribble needs at
+// least one curve command.
+function hasCurveCommand(pathTag) {
+  const d = extractAttr(pathTag, "d") || "";
+  return /[QCTS]/i.test(d);
 }
 
 /**
@@ -116,9 +125,12 @@ export function validatePhaseOutput(phase, svg) {
       if (!pathTag) {
         issues.push(`Player ${id}: action describes dribbling but the movement element isn't a <path> (likely a straight <line> -- that's a cut, not a dribble).`);
       } else {
+        if (!hasCurveCommand(pathTag)) {
+          issues.push(`Player ${id}: dribble path uses only straight line-to (L) commands -- that's a jagged zigzag/lightning bolt, not a smooth sine-wave dribble. Use Q (quadratic Bezier) curves instead.`);
+        }
         const segs = countPathSegments(pathTag);
         if (segs < 4) {
-          issues.push(`Player ${id}: dribble path has only ${segs} segment(s), needs at least 4 for a real zigzag.`);
+          issues.push(`Player ${id}: dribble path has only ${segs} segment(s), needs at least 4 for a real wave.`);
         }
       }
     }
