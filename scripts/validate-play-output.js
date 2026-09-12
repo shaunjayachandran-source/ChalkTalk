@@ -61,7 +61,7 @@ if (!Array.isArray(phases)) {
 
 let totalIssues = 0;
 for (const phase of phases) {
-  const { ok, issues } = validatePhaseOutput(phase, phase.diagramSvg || "");
+  const { ok, issues } = validatePhaseOutput(phase, phase.diagramSvg || "", phase.courtType || "half");
   const label = `Phase ${phase.phaseNumber ?? "?"} (${phase.phaseName || "unnamed"})`;
   if (ok) {
     console.log(`PASS  ${label}`);
