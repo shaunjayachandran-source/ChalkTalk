@@ -30,6 +30,7 @@
  */
 
 import { validateCoachSession } from "./_lib/validate-session.js";
+import { findMentionedSystem } from "./_lib/knowledge-base.js";
 
 // Runs on Vercel's default Node.js runtime — Edge Functions have a hard
 // ~25s cap that can't be extended, and open-ended play descriptions can
@@ -196,8 +197,45 @@ export default async function handler(req, res) {
     .filter(Boolean)
     .join("\n");
 
+    // ---- Retrieval-first knowledge base check ----
+  // Never let the model guess at a named system's structure when we
+  // actually have a verified entry for it. This is a plain substring
+  // match against kb_entries (see api/_lib/knowledge-base.js) -- not an
+  // LLM call, not a heuristic guess at intent, just: does the coach's own
+  // text literally name a system we already know. A miss here isn't
+  // treated as "the coach's play is unknown to basketball" -- most plays
+  // don't name a formal system at all -- it just means this specific
+  // grounding step doesn't apply, and generation proceeds on general
+  // model knowledge as before.
+  let groundedEntry = null;
+  try {
+    groundedEntry = await findMentionedSystem(description);
+  } catch (err) {
+    console.log(`[generate-brief] knowledge base lookup failed (non-fatal): ${err.message}`);
+  }
+ 
+  if (groundedEntry) {
+    const kbBlock = [
+      ``,
+      `VERIFIED KNOWLEDGE BASE ENTRY (use these specifics as ground truth for this named system; the coach's own description still wins for anything it explicitly overrides):`,
+      `System: ${groundedEntry.system_name}${groundedEntry.formation ? ` (${groundedEntry.formation})` : ""}`,
+      `Summary: ${groundedEntry.summary}`,
+      groundedEntry.structure && Object.keys(groundedEntry.structure).length > 0
+        ? `Structure: ${JSON.stringify(groundedEntry.structure)}`
+        : null,
+      groundedEntry.confidence === "seed_verified"
+        ? `Source: ChalkTalk coach-curated reference (not web-sourced).`
+        : Array.isArray(groundedEntry.sources) && groundedEntry.sources.length > 0
+        ? `Sources: ${groundedEntry.sources.map((s) => s.url).join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    userContent.push({ type: "text", text: kbBlock });
+  }
+ 
   userContent.push({ type: "text", text: textPrompt });
-
+ 
   let anthropicRes;
   const callStart = Date.now();
   try {
@@ -276,7 +314,14 @@ export default async function handler(req, res) {
   // we already know what was requested, no need to rely on the model
   // faithfully including it in its JSON output.
   brief.basketOrientation = courtType === "half" ? resolvedOrientation : undefined;
-
+ 
+  // Provenance flag for the UI/downstream code -- lets a coach (or a
+  // future "verified" badge) see whether this brief was grounded in a
+  // real knowledge base entry or fell back to general model knowledge.
+  // This is the honest version of "if not found, don't pretend it was."
+  brief.groundedInKb = Boolean(groundedEntry);
+  brief.groundedSystemSlug = groundedEntry ? groundedEntry.slug : null;
+ 
   return sendJson(res, { brief });
 }
 
