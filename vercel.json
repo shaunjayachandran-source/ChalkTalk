@@ -1,4 +1,10 @@
 {
   "outputDirectory": "public",
-  "rewrites": []
+  "rewrites": [],
+  "crons": [
+    {
+      "path": "/api/research-knowledge",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }
