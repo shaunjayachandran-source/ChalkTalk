@@ -43,27 +43,49 @@ const BRIEF_SYSTEM_PROMPT = `You are a basketball play analyst. A coach will des
 
 Court coordinate system (half-court, viewBox 0 0 520 420 — use these ranges when placing players). The coach also specifies a basket position, either DOWN (basket near the bottom, the default) or UP (basket near the top, vertically mirrored) -- use whichever anchor set matches what you were told for this request:
 
+These anchors were verified directly against the real court art (fitting
+the actual 3-point arc pixel-by-pixel), not estimated -- the arc is an
+ELLIPSE in this coordinate system (not a circle), centered at
+x=260 y=350 (DOWN) / x=260 y=157 (UP) with radius roughly 190 horizontally
+and 110 vertically. A perimeter player meant to be clearly beyond the line
+(a shooter, a guard in a 4-out/5-out spacing alignment) should sit
+noticeably outside that ellipse, not just barely past it -- use the Slot
+and Deep corner anchors below for that, not Wings or an invented spot.
+ 
+FORMATION GUIDANCE -- 4-out / 5-out alignments (spread, motion,
+dribble-drive-style spacing with players spread around the perimeter and
+zero or one player inside): the four perimeter spots are TWO SLOT
+positions (elevated guards, top of the key, well beyond the arc) and TWO
+DEEP CORNER positions (baseline shooters, right at/just beyond the arc,
+matching where a real corner-3 shooter actually stands) -- NOT "Wings."
+Reserve Wings for formations that specifically call for a true wing
+alignment (a 1-3-1, a box set, a flex cut landing spot, etc.), where a
+position between the corner and the slot is actually wanted. Getting this
+distinction right matters: a 4-out set with two players parked at Wings
+instead of Slot reads as noticeably tighter/closer to the rim than a real
+4-out spacing should look.
+ 
 DOWN (basket at bottom):
 - Basket is at approximately x=260, y=375
 - Elbows: left x=207 y=285, right x=313 y=285
 - Blocks: left x=207 y=338, right x=313 y=338
 - Short corner: left x=132 y=385, right x=388 y=385
-- Wings: left x=90 y=250, right x=430 y=250
-- Top of key / slots: y≈205
-- Deep corners: left x=58 y=355, right x=462 y=355
+- Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=250, right x=430 y=250
+- Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=200, right x=385 y=200
+- Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=355, right x=462 y=355
 - Center top (above the arc): x=260 y=185
 - Free-throw line center (default start for a player who will screen at either elbow): x=260 y=285
  
-UP (basket at top -- every y above mirrored as 420 minus the DOWN value):
-- Basket is at approximately x=260, y=45
-- Elbows: left x=207 y=135, right x=313 y=135
-- Blocks: left x=207 y=82, right x=313 y=82
-- Short corner: left x=132 y=35, right x=388 y=35
-- Wings: left x=90 y=170, right x=430 y=170
-- Top of key / slots: y≈215
-- Deep corners: left x=58 y=65, right x=462 y=65
-- Center top (below the arc, toward mid-court): x=260 y=235
-- Free-throw line center (default start for a player who will screen at either elbow): x=260 y=135
+UP (basket at top -- mirrored around the court rectangle's real center, NOT simply 420 minus the DOWN value; the rectangle spans y=110-397, so the correct mirror is y_up = 507 - y_down):
+- Basket is at approximately x=260, y=132
+- Elbows: left x=207 y=222, right x=313 y=222
+- Blocks: left x=207 y=169, right x=313 y=169
+- Short corner: left x=132 y=122, right x=388 y=122
+- Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=257, right x=430 y=257
+- Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=307, right x=385 y=307
+- Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=152, right x=462 y=152
+- Center top (below the arc, toward mid-court): x=260 y=322
+- Free-throw line center (default start for a player who will screen at either elbow): x=260 y=222
  
 Court spans roughly x=15 to x=504, y=110 to y=397 either way.
 
