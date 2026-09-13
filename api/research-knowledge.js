@@ -26,6 +26,21 @@
  * anything else. Requires env vars: SUPABASE_SERVICE_ROLE_KEY (already set
  * for other api/ files), ANTHROPIC_API_KEY (already set), CRON_SECRET (new
  * -- generate one and set it in both Vercel project settings and here).
+ *
+ * RETRY NOTE (added after a real production incident -- see
+ * claude/known-failure-modes.md, Deployment / Vercel Pipeline section):
+ * the very first two live cron/manual invocations both hit a 504 from
+ * Supabase's REST endpoint on the initial queue fetch specifically -- a
+ * direct SQL query against the same table via the Supabase SQL editor
+ * responded instantly, and no matching Postgres-level log entry existed
+ * for either failed request, meaning the request never reached the
+ * database engine at all. That isolates the fault to the Supabase REST/
+ * connection layer for this specific (service-role) request path, not a
+ * bug in the query and not the database itself. fetchPendingTopics()
+ * below retries that one call a couple of times before giving up, and the
+ * handler now always returns real JSON on failure instead of crashing
+ * unhandled -- so a repeat of this shows up as a clean, readable error
+ * (or quietly succeeds on retry) instead of a bare 500 with no body.
  */
 
 import { getSupabase, slugify } from "./_lib/knowledge-base.js";
@@ -34,6 +49,8 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 const MIN_DISTINCT_SOURCES = 2;
 const MAX_TOPICS_PER_RUN = 5; // keep each cron invocation well under Vercel's function timeout
+const QUEUE_FETCH_MAX_ATTEMPTS = 3; // 1 initial try + 2 retries
+const QUEUE_FETCH_RETRY_DELAY_MS = 750;
 
 const RESEARCH_SYSTEM_PROMPT = `You are a basketball research assistant for ChalkTalk, a coaching-playbook
 product. You are given the name of an offensive or defensive system a coach
@@ -146,6 +163,50 @@ function verifyCitations(parsed, realCitations) {
   }
 
   return { ok: true };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retrying wrapper around the one Supabase call that has actually failed in
+ * production so far (see the RETRY NOTE at the top of this file). Retries a
+ * genuine thrown/rejected error (e.g. a gateway timeout) as well as a
+ * {data, error} result with error set -- either shape gets one more chance
+ * before this gives up and lets the caller decide what to do. Every attempt
+ * (success or failure) is logged so a real incident is visible in Vercel's
+ * logs, not silently swallowed.
+ */
+async function fetchPendingTopics(supabase) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= QUEUE_FETCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const { data, error } = await supabase
+        .from("kb_research_queue")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(MAX_TOPICS_PER_RUN);
+
+      if (error) {
+        lastError = new Error(error.message);
+      } else {
+        if (attempt > 1) {
+          console.log(`[research-knowledge] queue fetch succeeded on attempt ${attempt}/${QUEUE_FETCH_MAX_ATTEMPTS}`);
+        }
+        return data;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    console.log(`[research-knowledge] queue fetch attempt ${attempt}/${QUEUE_FETCH_MAX_ATTEMPTS} failed: ${lastError.message}`);
+    if (attempt < QUEUE_FETCH_MAX_ATTEMPTS) {
+      await sleep(QUEUE_FETCH_RETRY_DELAY_MS);
+    }
+  }
+  throw lastError;
 }
 
 async function researchTopic(topic) {
@@ -294,15 +355,13 @@ export default async function handler(req, res) {
 
   const supabase = getSupabase();
 
-  const { data: pending, error } = await supabase
-    .from("kb_research_queue")
-    .select("*")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(MAX_TOPICS_PER_RUN);
-
-  if (error) {
-    res.status(500).json({ error: error.message });
+  let pending;
+  try {
+    pending = await fetchPendingTopics(supabase);
+  } catch (err) {
+    const message = err && err.message ? err.message : String(err);
+    console.log(`[research-knowledge] queue fetch failed after ${QUEUE_FETCH_MAX_ATTEMPTS} attempt(s): ${message}`);
+    res.status(500).json({ error: `queue fetch failed after ${QUEUE_FETCH_MAX_ATTEMPTS} attempt(s): ${message}` });
     return;
   }
 
