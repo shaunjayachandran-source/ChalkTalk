@@ -162,11 +162,20 @@ export function validatePhaseOutput(phase, svg, courtType = "half") {
       issues.push(`Player ${id}: ${moveLines.length} movement lines/paths found for one player in one phase, expected exactly 1.`);
     }
 
+    // hasBall is the authoritative signal (set deterministically by the
+    // brief step, not inferred from prose) -- a player who has the ball
+    // AND is moving this phase is dribbling, full stop, regardless of how
+    // their action text happens to be worded. Action-text containing
+    // "dribbl" is kept as a fallback trigger too, in case hasBall is ever
+    // missing/undefined on older briefs, but hasBall is checked first and
+    // is what actually catches the "plain arrow instead of a dribble"
+    // failure mode this validator exists for.
     const actionText = (p.action || "").toLowerCase();
-    if (actionText.includes("dribbl") && moveLines.length >= 1) {
+    const shouldBeDribble = p.hasBall === true || actionText.includes("dribbl");
+    if (shouldBeDribble && moveLines.length >= 1) {
       const pathTag = moveLines.find((t) => t.startsWith("<path"));
       if (!pathTag) {
-        issues.push(`Player ${id}: action describes dribbling but the movement element isn't a <path> (likely a straight <line> -- that's a cut, not a dribble).`);
+        issues.push(`Player ${id}: has the ball and is moving this phase (a live dribble) but the movement element isn't a <path> (likely a straight <line> -- that's a cut, not a dribble).`);
       } else {
         if (!hasCurveCommand(pathTag)) {
           issues.push(`Player ${id}: dribble path uses only straight line-to (L) commands -- that's a jagged zigzag/lightning bolt, not a smooth sine-wave dribble. Use Q (quadratic Bezier) curves instead.`);
@@ -176,6 +185,20 @@ export function validatePhaseOutput(phase, svg, courtType = "half") {
           issues.push(`Player ${id}: dribble path has only ${segs} segment(s), needs at least 4 for a real wave.`);
         }
       }
+    }
+
+    // SCREEN-THEN-MOVE guard: if the phase data itself shows a player NOT
+    // moving (start==end, already skipped above via `continue`) this never
+    // fires -- so this only matters when upstream data is malformed. Kept
+    // here as a second line of defense: a screener's own action text
+    // should never simultaneously claim they moved to a screen spot AND
+    // popped/rolled elsewhere in prose while start==end says they didn't
+    // move -- that combination means the brief step's SCREEN-THEN-MOVE
+    // RULE was violated upstream, not a diagram bug, so just surface it.
+    if (moves && /screen/.test(actionText) && /(pop|roll|relocat)/.test(actionText)) {
+      issues.push(
+        `Player ${id}: action text describes both setting a screen AND popping/rolling/relocating in the same phase ("${p.action}") -- these must be two separate phases (see generate-brief.js's SCREEN-THEN-MOVE RULE); this phase's brief data needs to be split, not just its diagram.`
+      );
     }
   }
 
