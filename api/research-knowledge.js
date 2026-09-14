@@ -43,7 +43,7 @@
  * (or quietly succeeds on retry) instead of a bare 500 with no body.
  */
 
-import { getSupabase, slugify } from "./_lib/knowledge-base.js";
+import { getSupabase, slugify, isStale, enqueueResearchTopic } from "./_lib/knowledge-base.js";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
@@ -178,6 +178,63 @@ function sleep(ms) {
  * (success or failure) is logged so a real incident is visible in Vercel's
  * logs, not silently swallowed.
  */
+/**
+ * PROACTIVE STALENESS SWEEP (added so the KB grows/refreshes on its own
+ * 6-hour schedule instead of only reacting to a coach naming an unknown
+ * system -- see claude/chalktalk-part2-rebuild-status.md, "Yes to both --
+ * immediately"). Runs once at the top of every cron invocation, before the
+ * normal queue drain below.
+ *
+ * Only ever re-queues 'auto_merged_sourced' rows -- a seed_verified row
+ * (the 20 coach-curated systems) is never auto-requeued here; those are
+ * curated content, not something this sweep should silently touch, same
+ * rule processQueueRow() already enforces on the merge side.
+ *
+ * Reuses isStale() (age > STALE_AFTER_DAYS, already written and exported
+ * from knowledge-base.js but never called anywhere until now) and
+ * enqueueResearchTopic() (already does its own dedup against any
+ * pending/running row for the same slug, so this is safe to run every
+ * single cron tick without creating duplicate queue rows).
+ *
+ * Deliberately best-effort: any failure here is logged and swallowed, not
+ * thrown -- a broken sweep must never block the normal queue drain below
+ * it from running.
+ */
+async function enqueueStaleEntries(supabase) {
+  try {
+    const { data: entries, error } = await supabase
+      .from("kb_entries")
+      .select("id, system_name, last_verified_at, confidence")
+      .eq("confidence", "auto_merged_sourced");
+
+    if (error) throw error;
+
+    const stale = (entries || []).filter(isStale);
+    if (stale.length === 0) {
+      console.log("[research-knowledge] staleness sweep: nothing stale");
+      return { checked: entries ? entries.length : 0, queued: 0 };
+    }
+
+    let queued = 0;
+    for (const entry of stale) {
+      try {
+        const queueId = await enqueueResearchTopic(entry.system_name, {
+          reason: "staleness_sweep",
+          requestedBy: "system",
+        });
+        if (queueId) queued++;
+      } catch (err) {
+        console.log(`[research-knowledge] staleness sweep: failed to enqueue "${entry.system_name}": ${err.message}`);
+      }
+    }
+    console.log(`[research-knowledge] staleness sweep: ${stale.length} stale entr${stale.length === 1 ? "y" : "ies"}, ${queued} newly queued`);
+    return { checked: entries.length, stale: stale.length, queued };
+  } catch (err) {
+    console.log(`[research-knowledge] staleness sweep failed (non-fatal, queue drain continues): ${err.message}`);
+    return { checked: 0, queued: 0, error: err.message };
+  }
+}
+
 async function fetchPendingTopics(supabase) {
   let lastError = null;
   for (let attempt = 1; attempt <= QUEUE_FETCH_MAX_ATTEMPTS; attempt++) {
@@ -355,18 +412,23 @@ export default async function handler(req, res) {
 
   const supabase = getSupabase();
 
+  // Proactive step, runs before the normal drain below: top up the queue
+  // with anything stale so the KB refreshes itself on this same 6-hour
+  // schedule instead of only reacting to a coach naming an unknown system.
+  const sweepResult = await enqueueStaleEntries(supabase);
+
   let pending;
   try {
     pending = await fetchPendingTopics(supabase);
   } catch (err) {
     const message = err && err.message ? err.message : String(err);
     console.log(`[research-knowledge] queue fetch failed after ${QUEUE_FETCH_MAX_ATTEMPTS} attempt(s): ${message}`);
-    res.status(500).json({ error: `queue fetch failed after ${QUEUE_FETCH_MAX_ATTEMPTS} attempt(s): ${message}` });
+    res.status(500).json({ error: `queue fetch failed after ${QUEUE_FETCH_MAX_ATTEMPTS} attempt(s): ${message}`, staleness_sweep: sweepResult });
     return;
   }
 
   if (!pending || pending.length === 0) {
-    res.status(200).json({ processed: 0, results: [] });
+    res.status(200).json({ processed: 0, results: [], staleness_sweep: sweepResult });
     return;
   }
 
@@ -381,5 +443,5 @@ export default async function handler(req, res) {
     results.push(await processQueueRow(supabase, row));
   }
 
-  res.status(200).json({ processed: results.length, results });
+  res.status(200).json({ processed: results.length, results, staleness_sweep: sweepResult });
 }
