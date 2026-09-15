@@ -255,6 +255,17 @@
       <div id="mfa-msg" style="margin-top:8px; font-size:12px;"></div>
     </div>
 
+    <!-- Master-login / staff view (Sep 15, 2026): only ever shown to an
+         account granted staff access via the staff_accounts table (see
+         SQL--master-login-staff.sql) -- a normal coach never sees this,
+         and this account never appears as a roster/coach row on any real
+         program. Purely informational; the actual "can see/manage every
+         program" behavior is enforced server-side by is_chalktalk_staff()
+         via RLS and coach_has_permission(), not by this banner. -->
+    <div class="card" id="staff-banner" style="display:none; border-color:var(--gold);">
+      <div class="sub" style="color:var(--gold);">Staff view: you can see and manage every program for support/troubleshooting. This access is a temporary, expiring grant reviewed by Shaun -- not a normal coaching role.</div>
+    </div>
+
     <label style="color:var(--muted); font-size:12px; display:block; margin-bottom:6px;">Program</label>
     <select id="program-select"></select>
 
@@ -442,6 +453,11 @@
   let currentUserCanHide = false;
   let currentUserCanDelete = false;
   let currentUserRole = null;
+  // Master-login/staff (Sep 15, 2026): true only for an account with a
+  // live (non-expired) row in staff_accounts -- see is_chalktalk_staff()
+  // in SQL--master-login-staff.sql. Never set client-side; always the
+  // result of asking the database, which is the actual enforcement point.
+  let isStaffUser = false;
 
   // Known short-form marks for programs whose real initials wouldn't read
   // cleanly (e.g. "deMatha" -> "DM" reads better than "D"). Anything not
@@ -530,13 +546,21 @@
       .eq("program_id", programId)
       .eq("coach_id", currentUserId)
       .maybeSingle();
-    currentUserCanPublish = !!(coachRow && coachRow.can_publish);
-    currentUserCanHide = !!(coachRow && coachRow.can_hide);
-    currentUserCanDelete = !!(coachRow && coachRow.can_delete);
-    currentUserRole = coachRow ? coachRow.role : null;
+    // Staff (isStaffUser) is OR'd in here to mirror exactly what the
+    // database already grants server-side via coach_has_permission()'s
+    // own `is_chalktalk_staff() or ...` check -- this is UI-only so a
+    // staff account doesn't see buttons/checkboxes that would otherwise
+    // work fine at the database level but appear greyed out or hidden.
+    // A staff account has no program_coaches row at all (by design, so
+    // it never appears as a roster/coach entry), so coachRow is always
+    // null for them here -- that's expected, not an error.
+    currentUserCanPublish = !!(coachRow && coachRow.can_publish) || isStaffUser;
+    currentUserCanHide = !!(coachRow && coachRow.can_hide) || isStaffUser;
+    currentUserCanDelete = !!(coachRow && coachRow.can_delete) || isStaffUser;
+    currentUserRole = coachRow ? coachRow.role : (isStaffUser ? "staff" : null);
 
     const inviteForm = document.getElementById("invite-coach-form");
-    if (inviteForm) inviteForm.style.display = currentUserRole === "head_coach" ? "flex" : "none";
+    if (inviteForm) inviteForm.style.display = (currentUserRole === "head_coach" || isStaffUser) ? "flex" : "none";
 
     await Promise.all([loadPlays(programId), loadMembers(programId), loadCoaches(programId)]);
   }
@@ -896,7 +920,7 @@
     const hint = document.getElementById("staff-permissions-hint");
     if (error || !rows) return;
 
-    const isAdmin = currentUserRole === "head_coach";
+    const isAdmin = currentUserRole === "head_coach" || isStaffUser;
     if (hint) hint.style.display = isAdmin ? "block" : "none";
 
     const permCell = (row, field, label) => {
@@ -1313,6 +1337,23 @@
     const session = await requireSession();
     if (!session) return;
     currentUserId = session.user.id;
+
+    // Master-login/staff check (Sep 15, 2026): is_chalktalk_staff() is a
+    // SECURITY DEFINER SQL function (see SQL--master-login-staff.sql), so
+    // this RPC call just asks the database the same question every RLS
+    // policy and permission trigger already asks -- there's no separate
+    // client-side notion of "staff" to keep in sync. Failing closed (i.e.
+    // treating any error here as "not staff") is deliberate: a broken RPC
+    // call should never accidentally grant broader UI than a normal coach.
+    try {
+      const { data: staffCheck, error: staffErr } = await supabase.rpc("is_chalktalk_staff");
+      isStaffUser = !staffErr && staffCheck === true;
+    } catch (err) {
+      isStaffUser = false;
+    }
+    const staffBanner = document.getElementById("staff-banner");
+    if (staffBanner) staffBanner.style.display = isStaffUser ? "block" : "none";
+
     await refreshMfaStatus();
     await loadPrograms();
   })();
