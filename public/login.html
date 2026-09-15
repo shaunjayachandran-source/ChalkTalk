@@ -143,6 +143,48 @@
       resetForm.style.display = "block";
     }
 
+    // Deep-link-back after login (Sep 15, 2026): if the coach arrived here
+    // from a public team page's "This play is private" modal, that modal
+    // stashed the clicked play's id in sessionStorage before navigating
+    // (see showAccessModal() in chalk-team-common.js). Once we have a real
+    // session, try opening that exact play via api/view-play.js instead of
+    // just landing on the dashboard -- same fetch-into-a-blank-tab-free
+    // approach as create.html, but replacing THIS tab since we're already
+    // mid-navigation here. Falls back to the normal dashboard landing on
+    // any failure (wrong program, play deleted, storage blocked, etc.) so
+    // a stale/bad pending id never strands the coach on a blank page.
+    async function goPostLogin(defaultUrl) {
+      let pendingPlayId = null;
+      try {
+        pendingPlayId = sessionStorage.getItem("ct_pending_play_id");
+      } catch (err) {}
+
+      if (pendingPlayId) {
+        try {
+          sessionStorage.removeItem("ct_pending_play_id");
+        } catch (err) {}
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          try {
+            const res = await fetch(`/api/view-play?playId=${encodeURIComponent(pendingPlayId)}`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) {
+              const html = await res.text();
+              document.open();
+              document.write(html);
+              document.close();
+              return;
+            }
+          } catch (err) {
+            // Fall through to the default landing below.
+          }
+        }
+      }
+
+      window.location.href = defaultUrl;
+    }
+
     // Supabase fires this when the URL contains a valid recovery/magic-link
     // token (it parses the URL itself -- we don't need to touch location.hash).
     supabase.auth.onAuthStateChange((event) => {
@@ -152,12 +194,13 @@
     });
 
     // If already logged in with a normal session (not a recovery link),
-    // skip straight to the dashboard. Recovery sessions are handled above
-    // instead, so check the URL for that first.
+    // skip straight to the dashboard (or a pending play -- see
+    // goPostLogin). Recovery sessions are handled above instead, so check
+    // the URL for that first.
     const isRecoveryLink = window.location.hash.includes("type=recovery");
     if (!isRecoveryLink) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) window.location.href = "/dashboard.html";
+        if (session) goPostLogin("/dashboard.html");
       });
     }
 
@@ -181,7 +224,7 @@
         return;
       }
 
-      window.location.href = "/dashboard.html";
+      await goPostLogin("/dashboard.html");
     });
 
     resetForm.addEventListener("submit", async (e) => {
@@ -211,7 +254,7 @@
         return;
       }
 
-      window.location.href = "/dashboard.html";
+      await goPostLogin("/dashboard.html");
     });
   </script>
 </body>
