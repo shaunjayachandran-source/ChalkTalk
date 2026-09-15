@@ -30,7 +30,14 @@
  */
 
 import { validateCoachSession } from "./_lib/validate-session.js";
-import { findMentionedSystem } from "./_lib/knowledge-base.js";
+import { findMentionedSystem, getSupabase, slugify, enqueueResearchTopic } from "./_lib/knowledge-base.js";
+// Synchronous in-request research fallback (added Sep 15, 2026, per Shaun's
+// "Yes - build it now"): when a coach names a system the KB doesn't
+// recognize, this reuses the EXACT same citation-gate / domain-restricted
+// research logic the 6-hour cron worker uses (api/research-knowledge.js),
+// so the two paths can't silently drift apart. See the "SYNCHRONOUS
+// RESEARCH FALLBACK" block below for the full flow.
+import { researchTopic, verifyCitations, buildKbEntryUpsertPayload } from "./_lib/kb-research.js";
 
 // Runs on Vercel's default Node.js runtime — Edge Functions have a hard
 // ~25s cap that can't be extended, and open-ended play descriptions can
@@ -142,6 +149,54 @@ SCREEN-THEN-MOVE RULE (critical): a player cannot both set a screen AND relocate
 
 HARD CAP: never generate more than 8 phases total, no matter how long or continuous the described action is (e.g. a full motion-offense cycle back to starting spots). If the play logically needs more to fully resolve, consolidate the least essential intermediate movements so the whole thing still fits in 8 phases or fewer -- a coach can always describe a follow-up play separately. This cap exists because the response has a fixed size budget; going over it produces a cut-off, invalid response instead of a complete one.`;
 
+// How long the synchronous research call is allowed to run before this
+// request gives up and falls back to general model knowledge. Shaun's
+// original ask was "how fast are we able to research an unknown play
+// name/set in the moment" -- this is the bound we're holding it to (the
+// "~20-25s" figure floated and approved), not yet validated against a real
+// timed call; brief.synchronousResearchLatencyMs on the response is how
+// that gets measured for real once this ships.
+const SYNCHRONOUS_RESEARCH_TIMEOUT_MS = 22000;
+
+// Deterministic (non-LLM, same philosophy as findMentionedSystem) fallback
+// for detecting "the coach named a specific system" when the play-creation
+// UI hasn't yet been given an explicit namedSystem field to make that
+// unambiguous (see the TODO on kb_research_queue's design in
+// claude/knowledge-base-architecture.md). Intentionally conservative: only
+// fires on "<name> offense/defense/press/zone/series", so a coach who
+// merely describes actions without naming a system correctly produces no
+// match rather than a guessed one.
+// Case-SENSITIVE on purpose: a real system name is almost always written
+// as a proper noun ("Wheel offense", "1-4 High offense", "Read and React
+// offense"), so requiring the captured phrase to start with an uppercase
+// letter or digit is what keeps this from firing on generic phrasing like
+// "we run our offense" or "read the defense". Known gap: this only catches
+// the "<Name> offense/defense/..." word order, not "our defense is a
+// Box-and-One" (name before the category word) -- acceptable for a
+// heuristic that's explicitly a stopgap for the real fix (an explicit
+// namedSystem field from the UI, see the destructured field above).
+const NAMED_SYSTEM_PATTERN = /\b((?:[A-Z0-9][A-Za-z0-9\-\/']*|and|to)(?:\s+(?:[A-Z0-9][A-Za-z0-9\-\/']*|and|to)){0,4})\s+(offense|defense|press|zone|series)\b/;
+const NAMED_SYSTEM_LEADING_STOPWORDS = new Set([
+  "this", "our", "the", "we", "a", "an", "my", "your", "their", "some", "any",
+  "it", "play", "run", "playing", "call", "calls", "named", "its",
+]);
+
+function extractNamedSystemCandidate(text) {
+  if (!text) return null;
+  const m = text.match(NAMED_SYSTEM_PATTERN);
+  if (!m) return null;
+  const words = m[1].trim().split(/\s+/);
+  // Strip generic leading words a sentence-starting capital can produce
+  // ("This 1-4 High offense..." -> drop "This"), and bail entirely if
+  // nothing real is left ("This offense" alone, capitalized only because
+  // it starts the sentence).
+  while (words.length > 1 && NAMED_SYSTEM_LEADING_STOPWORDS.has(words[0].toLowerCase())) {
+    words.shift();
+  }
+  if (words.length === 0 || NAMED_SYSTEM_LEADING_STOPWORDS.has(words[0].toLowerCase())) return null;
+  return `${words.join(" ")} ${m[2]}`.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, { error: "Method not allowed" }, 405);
@@ -163,6 +218,14 @@ export default async function handler(req, res) {
     description,
     imageBase64,
     imageMediaType,
+    // Optional, not yet sent by the UI: the clean, unambiguous signal for
+    // "the coach explicitly named a real system" that
+    // claude/knowledge-base-architecture.md flagged as the natural next
+    // step ("Wiring that up is the very next piece of this, not yet
+    // built."). When the play-creation UI grows an explicit field for this,
+    // wire it through here and it will be preferred over the regex
+    // heuristic below (see extractNamedSystemCandidate).
+    namedSystem,
   } = body;
 
   // Basket orientation only applies to half court; default to "down" (the
@@ -227,7 +290,107 @@ export default async function handler(req, res) {
   } catch (err) {
     console.log(`[generate-brief] knowledge base lookup failed (non-fatal): ${err.message}`);
   }
- 
+
+  // ---- Synchronous in-request research fallback ----
+  // Approved by Shaun Sep 15, 2026 ("Yes - build it now") in response to
+  // "We need a more solid approach than general basketball knowledge - as
+  // that has shown to create failures at this point." When the retrieval
+  // step above misses AND the coach appears to have named a real system by
+  // name, this makes ONE bounded, timeboxed, citation-gated web-search call
+  // (same gate, same coach-vetted allowed_domains as the background cron
+  // worker -- see api/_lib/kb-research.js) inline in this same request,
+  // rather than either making the coach wait indefinitely or silently
+  // falling back to ungrounded general knowledge. On success the result is
+  // both used to ground THIS brief and persisted to kb_entries so every
+  // future request for the same system is an instant retrieval-first hit.
+  // On failure/timeout, generation proceeds on general model knowledge
+  // exactly as before -- but brief.groundingSource below makes that
+  // previously-silent case visible instead of hidden.
+  let groundingSource = groundedEntry ? "kb_entries_hit" : "ungrounded_fallback";
+  let synchronousResearchLatencyMs = null;
+
+  if (!groundedEntry) {
+    const candidateSystemName = (typeof namedSystem === "string" && namedSystem.trim()) || extractNamedSystemCandidate(description);
+
+    if (candidateSystemName) {
+      const researchStart = Date.now();
+      try {
+        const { parsed, realCitations, searchCallCount } = await researchTopic(candidateSystemName, {
+          timeoutMs: SYNCHRONOUS_RESEARCH_TIMEOUT_MS,
+        });
+        synchronousResearchLatencyMs = Date.now() - researchStart;
+        console.log(`[generate-brief] synchronous research for "${candidateSystemName}" took ${synchronousResearchLatencyMs}ms`);
+
+        if (searchCallCount === 0) {
+          console.log(`[generate-brief] synchronous research: model never invoked web_search for "${candidateSystemName}"`);
+        } else if (!parsed) {
+          console.log(`[generate-brief] synchronous research: could not parse a JSON block for "${candidateSystemName}"`);
+        } else if (parsed.insufficient_evidence) {
+          console.log(`[generate-brief] synchronous research: insufficient evidence for "${candidateSystemName}": ${parsed.notes || "(no notes)"}`);
+        } else {
+          const gate = verifyCitations(parsed, realCitations);
+          if (!gate.ok) {
+            console.log(`[generate-brief] synchronous research: citation gate failed for "${candidateSystemName}": ${gate.reason}`);
+          } else {
+            const slug = slugify(parsed.system_name);
+            // Use the service-role client, not the request-scoped one from
+            // validateCoachSession -- kb_entries is shared reference data
+            // across every program, not something scoped to this coach's
+            // own program by RLS.
+            const supabaseAdmin = getSupabase();
+            const { data: existingSeed } = await supabaseAdmin
+              .from("kb_entries")
+              .select("id, confidence")
+              .eq("slug", slug)
+              .maybeSingle();
+
+            if (existingSeed && existingSeed.confidence === "seed_verified") {
+              // Never let a live research hit overwrite a coach-curated
+              // seed row -- same rule the cron worker enforces.
+              console.log(`[generate-brief] synchronous research: a seed_verified entry already exists for "${slug}", not overwriting`);
+            } else {
+              const upsertPayload = buildKbEntryUpsertPayload(parsed, slug);
+              const { data: inserted, error: upsertError } = await supabaseAdmin
+                .from("kb_entries")
+                .upsert(upsertPayload, { onConflict: "slug" })
+                .select("*")
+                .single();
+
+              if (upsertError) {
+                console.log(`[generate-brief] synchronous research: kb_entries upsert failed for "${slug}": ${upsertError.message}`);
+              } else {
+                groundedEntry = inserted;
+                groundingSource = "synchronous_research_hit";
+                console.log(`[generate-brief] synchronous research: merged "${slug}" live and grounded this request in it`);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        synchronousResearchLatencyMs = Date.now() - researchStart;
+        if (err && err.code === "RESEARCH_TIMEOUT") {
+          console.log(`[generate-brief] synchronous research timed out after ${synchronousResearchLatencyMs}ms for "${candidateSystemName}"`);
+        } else {
+          console.log(`[generate-brief] synchronous research failed after ${synchronousResearchLatencyMs}ms for "${candidateSystemName}": ${err.message}`);
+        }
+      }
+
+      // Whether or not the synchronous attempt above succeeded, also feed
+      // this named system into the background pipeline -- this is the
+      // "queue fills itself from real usage" wiring
+      // claude/knowledge-base-architecture.md flagged as not yet built.
+      // Fire-and-forget: never let a queueing failure affect this response.
+      try {
+        await enqueueResearchTopic(candidateSystemName, {
+          reason: "coach_requested_unknown_system",
+          requestedBy: authResult.user ? authResult.user.id : null,
+        });
+      } catch (err) {
+        console.log(`[generate-brief] failed to enqueue "${candidateSystemName}" for background research (non-fatal): ${err.message}`);
+      }
+    }
+  }
+
   if (groundedEntry) {
     const kbBlock = [
       ``,
@@ -335,7 +498,16 @@ export default async function handler(req, res) {
   // This is the honest version of "if not found, don't pretend it was."
   brief.groundedInKb = Boolean(groundedEntry);
   brief.groundedSystemSlug = groundedEntry ? groundedEntry.slug : null;
- 
+  // Finer-grained than groundedInKb: distinguishes an existing KB hit from
+  // a system researched live just now for this request, and -- the whole
+  // point of this addition -- makes the previously-silent ungrounded case
+  // ("groundedInKb: false" could mean either "no system named" or "named
+  // but we couldn't verify it") visible instead of hidden.
+  brief.groundingSource = groundingSource; // "kb_entries_hit" | "synchronous_research_hit" | "ungrounded_fallback"
+  if (synchronousResearchLatencyMs !== null) {
+    brief.synchronousResearchLatencyMs = synchronousResearchLatencyMs;
+  }
+
   return sendJson(res, { brief });
 }
 
