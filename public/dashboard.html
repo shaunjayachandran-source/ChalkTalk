@@ -337,9 +337,10 @@
       <h2>Coaches</h2>
       <div class="sub">Real dashboard logins with write access to this program -- separate from the team-member links above, which are read-only.</div>
       <table id="coaches-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Can publish</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Publish</th><th>Hide</th><th>Delete</th></tr></thead>
         <tbody></tbody>
       </table>
+      <div class="sub" id="staff-permissions-hint" style="margin-top:8px; margin-bottom:0; display:none;">Only the head coach can change these. Each box grants that coach the ability to publish, hide, or delete plays on this program independently -- unchecking one takes it away immediately.</div>
 
       <div class="add-form" id="invite-coach-form" style="display:none;">
                 <input type="text" id="new-coach-name" placeholder="Name (optional)" />
@@ -351,6 +352,12 @@
         </select>
         <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
           <input type="checkbox" id="new-coach-can-publish" style="width:auto;" /> Can publish
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+          <input type="checkbox" id="new-coach-can-hide" style="width:auto;" /> Can hide
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+          <input type="checkbox" id="new-coach-can-delete" style="width:auto;" /> Can delete
         </label>
         <button class="action" id="invite-coach-btn">Invite coach</button>
       </div>
@@ -407,6 +414,8 @@
   let currentProgramSlug = null;
   let currentUserId = null;
   let currentUserCanPublish = false;
+  let currentUserCanHide = false;
+  let currentUserCanDelete = false;
   let currentUserRole = null;
 
   // Known short-form marks for programs whose real initials wouldn't read
@@ -492,11 +501,13 @@
 
     const { data: coachRow } = await supabase
       .from("program_coaches")
-      .select("role, can_publish")
+      .select("role, can_publish, can_hide, can_delete")
       .eq("program_id", programId)
       .eq("coach_id", currentUserId)
       .maybeSingle();
     currentUserCanPublish = !!(coachRow && coachRow.can_publish);
+    currentUserCanHide = !!(coachRow && coachRow.can_hide);
+    currentUserCanDelete = !!(coachRow && coachRow.can_delete);
     currentUserRole = coachRow ? coachRow.role : null;
 
     const inviteForm = document.getElementById("invite-coach-form");
@@ -677,24 +688,24 @@
       return;
     }
     empty.style.display = "none";
-    const canManage = ["head_coach", "assistant_coach", "dbo"].includes(currentUserRole);
     for (const play of data) {
       const tr = document.createElement("tr");
       const isPendingReview = play.status === "in_review";
       const statusLabel = play.hidden ? "Hidden" : isPendingReview ? "Pending review" : play.status;
-      // Anyone can see a play is pending review; only a coach with
-      // publish access on this program gets the button to act on it.
-      // (The database enforces this too -- via the can_publish trigger on
-      // plays -- this is just so a graduate assistant, say, doesn't see a
-      // button that would only fail for them.)
+      // Publish/hide/delete are now independently assignable per coach
+      // (Sep 15, 2026 -- see the Staff Permissions section of the Coaches
+      // card below), not a fixed role list. The database enforces this too
+      // -- via triggers on `plays` keyed off program_coaches.can_publish/
+      // can_hide/can_delete -- this is just so a coach without a given
+      // permission doesn't see a button that would only fail for them.
       const actionCell = [
         isPendingReview && currentUserCanPublish
           ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
           : "",
-        canManage
+        currentUserCanHide
           ? `<button class="link-btn secondary hide-play-btn" data-play-id="${play.id}" data-hidden="${play.hidden}">${play.hidden ? "Unhide" : "Hide"}</button>`
           : "",
-        canManage
+        currentUserCanDelete
           ? `<button class="link-btn secondary delete-play-btn" data-play-id="${play.id}" data-play-title="${play.title.replace(/"/g, "&quot;")}">Delete</button>`
           : "",
       ].join(" ");
@@ -841,16 +852,35 @@
     dbo: "DBO",
   };
 
+  // Staff Permissions (Sep 15, 2026): the head coach (and, once built, the
+  // master-login/staff tier -- see is_program_admin() in the SQL) can
+  // toggle publish/hide/delete per coach directly from this table. Anyone
+  // else just sees Yes/No -- the database's own program_coaches_admin_update
+  // RLS policy is what actually enforces this, this client-side check is
+  // only so a non-admin coach doesn't see editable checkboxes that would
+  // silently fail to save.
   async function loadCoaches(programId) {
     const { data: rows, error } = await supabase
       .from("program_coaches")
-      .select("coach_id, role, can_publish, coaches ( email, display_name )")
+      .select("coach_id, role, can_publish, can_hide, can_delete, coaches ( email, display_name )")
       .eq("program_id", programId)
       .order("role");
 
     const tbody = document.querySelector("#coaches-table tbody");
     tbody.innerHTML = "";
+    const hint = document.getElementById("staff-permissions-hint");
     if (error || !rows) return;
+
+    const isAdmin = currentUserRole === "head_coach";
+    if (hint) hint.style.display = isAdmin ? "block" : "none";
+
+    const permCell = (row, field, label) => {
+      if (!isAdmin) return row[field] ? "Yes" : "No";
+      return `<label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+        <input type="checkbox" class="perm-checkbox" data-coach-id="${row.coach_id}" data-field="${field}" ${row[field] ? "checked" : ""} style="width:auto;" />
+        <span class="sub" style="margin:0;">${label}</span>
+      </label>`;
+    };
 
     for (const row of rows) {
       const tr = document.createElement("tr");
@@ -860,10 +890,39 @@
         <td>${name}</td>
         <td>${email}</td>
         <td><span class="pill">${COACH_ROLE_LABELS[row.role] || row.role}</span></td>
-        <td>${row.can_publish ? "Yes" : "No"}</td>
+        <td>${permCell(row, "can_publish", "Publish")}</td>
+        <td>${permCell(row, "can_hide", "Hide")}</td>
+        <td>${permCell(row, "can_delete", "Delete")}</td>
       `;
       tbody.appendChild(tr);
     }
+
+    if (!isAdmin) return;
+
+    tbody.querySelectorAll(".perm-checkbox").forEach((cb) => {
+      cb.addEventListener("change", async () => {
+        cb.disabled = true;
+        const { error: updateErr } = await supabase
+          .from("program_coaches")
+          .update({ [cb.dataset.field]: cb.checked })
+          .eq("program_id", programId)
+          .eq("coach_id", cb.dataset.coachId);
+        cb.disabled = false;
+        if (updateErr) {
+          alert("Couldn't update permission: " + updateErr.message);
+          cb.checked = !cb.checked;
+          return;
+        }
+        // If the coach editing this IS themselves (e.g. a head coach
+        // toggling their own row), refresh the cached permission flags so
+        // the plays table's hide/delete buttons update without a reload.
+        // loadProgramDetail() already re-loads plays/members/coaches
+        // together -- no need to call loadPlays separately.
+        if (cb.dataset.coachId === currentUserId) {
+          await loadProgramDetail(programId);
+        }
+      });
+    });
   }
 
   document.getElementById("invite-coach-btn")?.addEventListener("click", async () => {
@@ -871,6 +930,8 @@
     const emailInput = document.getElementById("new-coach-email");
     const roleSelect = document.getElementById("new-coach-role");
     const canPublishCheckbox = document.getElementById("new-coach-can-publish");
+    const canHideCheckbox = document.getElementById("new-coach-can-hide");
+    const canDeleteCheckbox = document.getElementById("new-coach-can-delete");
     const statusEl = document.getElementById("invite-coach-status");
     const name = nameInput.value.trim();
     const email = emailInput.value.trim();
@@ -896,6 +957,8 @@
           email,
           role: roleSelect.value,
           canPublish: canPublishCheckbox.checked,
+          canHide: canHideCheckbox.checked,
+          canDelete: canDeleteCheckbox.checked,
         }),
       });
       result = await res.json();
@@ -913,6 +976,8 @@
     nameInput.value = "";
     emailInput.value = "";
     canPublishCheckbox.checked = false;
+    canHideCheckbox.checked = false;
+    canDeleteCheckbox.checked = false;
     btn.disabled = false;
     btn.textContent = "Invite coach";
     await loadCoaches(currentProgramId);
