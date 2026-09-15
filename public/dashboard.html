@@ -403,7 +403,7 @@
         </div>
         <button class="action" id="invite-coach-btn">Invite coach</button>
       </div>
-      <div class="sub" style="margin-top:8px; margin-bottom:0;">Only the head coach can invite other coaches. This sends a real Supabase account invite by email -- they'll set their own password and get a dashboard login.</div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">Only the head coach can invite other coaches. This sends a real account invite by email -- they'll set their own password and get a dashboard login.</div>
       <div id="invite-coach-status"></div>
     </div>
   </div>
@@ -1027,7 +1027,7 @@
     }
 
     statusEl.className = "";
-    statusEl.textContent = `Invited ${email}. They'll get a real Supabase login email to set their password.`;
+    statusEl.textContent = `Invited ${email}. They'll get an email to set their password and log in.`;
     nameInput.value = "";
     emailInput.value = "";
     canPublishCheckbox.checked = false;
