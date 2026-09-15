@@ -283,6 +283,22 @@ async function researchTopic(topic) {
           type: "web_search_20260318",
           name: "web_search",
           max_uses: 5,
+          // Restricted to Shaun's designated first research spots (Sep 15,
+          // 2026) rather than the open web -- these are coach-vetted
+          // reference sites, not generic search results. allowed_domains
+          // and blocked_domains are mutually exclusive on this tool (a 400
+          // error if both are set), so this is a hard allowlist: a topic
+          // not covered on either site will correctly fail the citation
+          // gate as insufficient_evidence rather than silently falling
+          // back to broader, unvetted search results. Widen this list
+          // (or drop it) once coverage from just these two proves too
+          // narrow in practice -- not yet tested against a real run.
+          allowed_domains: [
+            "coachesclipboard.net",
+            "www.coachesclipboard.net",
+            "basketballforcoaches.com",
+            "www.basketballforcoaches.com",
+          ],
         },
       ],
       messages: [
