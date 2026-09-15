@@ -98,6 +98,12 @@
     cursor: pointer;
   }
   button.action.danger { background: var(--red); }
+  button.action.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  #mfa-msg.error { color: var(--red); }
   .add-form { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
   .add-form input, .add-form select {
     background: #0d1017;
@@ -230,6 +236,25 @@
 <main>
   <div id="loading">Loading your programs...</div>
   <div id="content" style="display:none;">
+    <!-- Account-level, not per-program (Sep 15, 2026) -- 2FA protects your
+         login itself, same as any other account, so it sits above the
+         program selector rather than inside a specific program's cards. -->
+    <div class="card" id="security-card">
+      <h2>Security</h2>
+      <div class="sub">Optional two-factor authentication for your ChalkTalk login. Not required, but recommended -- especially for a head coach or anyone with publish/delete access.</div>
+      <div id="mfa-status">Loading...</div>
+      <div id="mfa-enroll-panel" style="display:none; margin-top:14px;">
+        <div id="mfa-qr-wrap" style="margin-bottom:10px;"></div>
+        <div class="field-hint" id="mfa-secret-hint"></div>
+        <div class="add-form" style="margin-top:10px;">
+          <input type="text" id="mfa-verify-code" placeholder="6-digit code" maxlength="6" style="max-width:140px;" autocomplete="one-time-code" />
+          <button class="action" id="mfa-verify-btn">Confirm</button>
+          <button class="action secondary" id="mfa-cancel-btn">Cancel</button>
+        </div>
+      </div>
+      <div id="mfa-msg" style="margin-top:8px; font-size:12px;"></div>
+    </div>
+
     <label style="color:var(--muted); font-size:12px; display:block; margin-bottom:6px;">Program</label>
     <select id="program-select"></select>
 
@@ -1182,10 +1207,113 @@
     window.location.href = "/login.html";
   });
 
+  // ---- Coach-tier MFA (Sep 15, 2026, optional per Shaun's Sep 15 answer) ----
+  // Uses Supabase Auth's own MFA API directly (auth.mfa.enroll/challenge/
+  // verify/unenroll/listFactors) -- no new database table needed, Supabase
+  // tracks factors itself. Enrollment happens here on the dashboard;
+  // login.html's own goPostLogin flow (see that file) is what actually
+  // challenges for the code at sign-in time once a factor is verified.
+  const mfaStatusEl = document.getElementById("mfa-status");
+  const mfaEnrollPanel = document.getElementById("mfa-enroll-panel");
+  const mfaMsg = document.getElementById("mfa-msg");
+  let pendingMfaFactorId = null;
+
+  async function refreshMfaStatus() {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) {
+      mfaStatusEl.textContent = "Couldn't load 2FA status: " + error.message;
+      return;
+    }
+    const verified = (data.totp || []).filter((f) => f.status === "verified");
+    if (verified.length) {
+      mfaStatusEl.innerHTML = `<span class="pill active">Enabled</span> <button class="link-btn secondary" id="mfa-remove-btn" style="margin-left:8px;">Turn off</button>`;
+      document.getElementById("mfa-remove-btn").addEventListener("click", async () => {
+        if (!confirm("Turn off two-factor authentication for your account? You'll be able to log in with just your password again.")) return;
+        const { error: unenrollErr } = await supabase.auth.mfa.unenroll({ factorId: verified[0].id });
+        if (unenrollErr) {
+          alert("Couldn't turn off 2FA: " + unenrollErr.message);
+          return;
+        }
+        await refreshMfaStatus();
+      });
+    } else {
+      mfaStatusEl.innerHTML = `<span class="pill revoked">Not enabled</span> <button class="link-btn secondary" id="mfa-enable-btn" style="margin-left:8px;">Enable 2FA</button>`;
+      document.getElementById("mfa-enable-btn").addEventListener("click", startMfaEnroll);
+    }
+  }
+
+  async function startMfaEnroll() {
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+    // Supabase only allows one un-verified TOTP factor per user at a time --
+    // clean up any abandoned attempt from a previous "Enable 2FA" click that
+    // was never confirmed, so this doesn't error out on a stale factor.
+    const { data: existing } = await supabase.auth.mfa.listFactors();
+    const stale = (existing?.totp || []).filter((f) => f.status !== "verified");
+    for (const f of stale) {
+      await supabase.auth.mfa.unenroll({ factorId: f.id });
+    }
+
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = "Couldn't start 2FA setup: " + error.message;
+      return;
+    }
+    pendingMfaFactorId = data.id;
+    document.getElementById("mfa-qr-wrap").innerHTML = `<img src="${data.totp.qr_code}" alt="Scan with your authenticator app" style="background:#fff; padding:8px; border-radius:8px; max-width:180px;" />`;
+    document.getElementById("mfa-secret-hint").textContent = `Can't scan? Enter this code manually in your authenticator app: ${data.totp.secret}`;
+    mfaEnrollPanel.style.display = "block";
+  }
+
+  document.getElementById("mfa-verify-btn")?.addEventListener("click", async () => {
+    const codeInput = document.getElementById("mfa-verify-code");
+    const code = codeInput.value.trim();
+    if (!code || !pendingMfaFactorId) return;
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+
+    const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: pendingMfaFactorId });
+    if (challengeErr) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = challengeErr.message;
+      return;
+    }
+    const { error: verifyErr } = await supabase.auth.mfa.verify({
+      factorId: pendingMfaFactorId,
+      challengeId: challenge.id,
+      code,
+    });
+    if (verifyErr) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = "That code didn't work -- check your authenticator app's current code and try again.";
+      return;
+    }
+
+    mfaMsg.className = "";
+    mfaMsg.textContent = "Two-factor authentication is now enabled. You'll be asked for a code the next time you log in.";
+    mfaEnrollPanel.style.display = "none";
+    codeInput.value = "";
+    pendingMfaFactorId = null;
+    await refreshMfaStatus();
+  });
+
+  document.getElementById("mfa-cancel-btn")?.addEventListener("click", async () => {
+    if (pendingMfaFactorId) {
+      await supabase.auth.mfa.unenroll({ factorId: pendingMfaFactorId });
+      pendingMfaFactorId = null;
+    }
+    mfaEnrollPanel.style.display = "none";
+    document.getElementById("mfa-verify-code").value = "";
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+  });
+
   (async () => {
     const session = await requireSession();
     if (!session) return;
     currentUserId = session.user.id;
+    await refreshMfaStatus();
     await loadPrograms();
   })();
 </script>
