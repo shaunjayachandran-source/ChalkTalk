@@ -11,19 +11,24 @@
  *     be traced back to whoever's account saw it. Tiled edge-to-edge
  *     (not a single corner mark) so cropping doesn't remove it.
  *
- * Two ways in, checked in order:
+ * Three ways in, checked in order:
  *   - A logged-in coach (Authorization: Bearer <session token>) viewing a
  *     play on their own program -- used right after create.html finishes
  *     a build.
+ *   - A logged-in player/parent viewer account (Authorization: Bearer
+ *     <session token>, added Sep 15, 2026 for the Dartmouth login pilot --
+ *     see api/_lib/validate-viewer-session.js) viewing a published play on
+ *     their linked program -- used from public/player-home.html.
  *   - A personal access-link token (?accessToken=<token>) viewing a
  *     published play -- same token model as api/team-access.js, used from
  *     my-playbook.html.
- * Neither checking out fails closed, same as every other reader-facing
- * endpoint in this app.
+ * None of these checking out fails closed, same as every other
+ * reader-facing endpoint in this app.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { validateCoachSession } from "./_lib/validate-session.js";
+import { validateViewerSession } from "./_lib/validate-viewer-session.js";
 
 const SUPABASE_URL = "https://dvilirimxnkaghqyoueh.supabase.co";
 
@@ -119,6 +124,25 @@ export default async function handler(req, res) {
         .eq("id", sessionResult.user.id)
         .maybeSingle();
       viewerLabel = (coachRow && (coachRow.display_name || coachRow.email)) || sessionResult.user.email || "Coach";
+    }
+  }
+
+  // Player/parent login tier (Dartmouth pilot, Sep 15, 2026): only tried
+  // once the coach-session check above has already failed, since a Bearer
+  // token could legitimately be either kind of session.
+  if (!authorized && hasBearer) {
+    const viewerResult = await validateViewerSession(req);
+    if (
+      viewerResult.ok &&
+      viewerResult.viewerAccount.program_id === play.program_id &&
+      play.status === "published" &&
+      !play.hidden
+    ) {
+      authorized = true;
+      viewerKind = "viewer_account";
+      viewerRefId = viewerResult.viewerAccount.id;
+      const role = viewerResult.teamMember?.role || "viewer";
+      viewerLabel = viewerResult.teamMember?.name ? `${viewerResult.teamMember.name} (${role})` : `Unnamed ${role}`;
     }
   }
 
