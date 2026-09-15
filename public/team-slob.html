@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BLOB — ChalkTalk</title>
+<title>Specials — ChalkTalk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="/css/chalk-team.css" />
 </head>
 <body>
 
-<div id="loading">Loading BLOB page...</div>
+<div id="loading">Loading specials page...</div>
 <div id="not-found" style="display:none;">No program found for this link.</div>
 
 <div id="page" style="display:none;">
@@ -19,7 +19,7 @@
   <div class="page-header">
     <a class="home-link" href="team.html" id="home-link">&larr; Return to Team Hub</a>
     <div class="page-title-row">
-      <h1>BLOB</h1>
+      <h1>Specials</h1>
       <div class="team-tag" id="team-tag"></div>
     </div>
 
@@ -29,12 +29,12 @@
     </div>
   </div>
 
-  <section class="section" id="blob">
+  <section class="section" id="special">
     <div class="section-head">
-      <h2>BLOB</h2>
-      <p>Baseline Out Of Bounds</p>
+      <h2>Specials</h2>
+      <p>ATOs, Press-Break &amp; End-Game</p>
     </div>
-    <div class="grid" id="blob-content"></div>
+    <div class="grid" id="special-content"></div>
   </section>
 
   <footer>
@@ -56,8 +56,8 @@
   import { supabase } from "/js/supabase-client.js";
 
   const CT = window.ChalkTeam;
-  const PLAY_TYPE = "blob";
-  const LABEL = "BLOB";
+  const PLAY_TYPE = "special";
+  const LABEL = "Specials";
 
   async function init() {
     const slug = new URLSearchParams(window.location.search).get("slug");
@@ -94,7 +94,7 @@
     document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
     document.getElementById("section-nav").innerHTML = CT.renderSectionNav(slug, PLAY_TYPE);
 
-    const grid = document.getElementById("blob-content");
+    const grid = document.getElementById("special-content");
     if (catPlays.length) {
       catPlays.forEach((p) => grid.appendChild(CT.playCard(p, { onOpen: openPlay })));
     } else {
