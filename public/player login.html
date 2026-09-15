@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — Player Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1017;
+    --gold: #f0b429;
+    --gold-stroke: #ffd060;
+    --text: #e8e6e0;
+    --muted: #8b93a1;
+    --card: #151a24;
+    --border: #262d3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px 28px;
+  }
+  h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 34px;
+    color: var(--gold);
+    margin: 0 0 4px;
+  }
+  p.sub {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0d1017;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+  button {
+    width: 100%;
+    margin-top: 22px;
+    padding: 11px;
+    background: var(--gold);
+    color: #0d1017;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #msg {
+    margin-top: 14px;
+    font-size: 13px;
+    min-height: 18px;
+  }
+  #msg.error { color: #ff7b6e; }
+  #msg.info { color: var(--muted); }
+</style>
+</head>
+<body>
+  <form class="card" id="login-form">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Player login</p>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" required autocomplete="email" />
+
+    <label for="password">Password</label>
+    <input type="password" id="password" required autocomplete="current-password" />
+
+    <button type="submit" id="submit-btn">Log in</button>
+    <div id="msg"></div>
+  </form>
+
+  <!-- Shown instead of the login form when the coach arrives here via a
+       Supabase "reset password" or "magic link" email. Those links carry a
+       recovery token in the URL that supabase-js picks up automatically and
+       fires a PASSWORD_RECOVERY auth event for -- this is the landing page
+       that lets them actually set a new password once that happens. -->
+  <form class="card" id="reset-form" style="display:none;">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Set a new password</p>
+
+    <label for="new-password">New password</label>
+    <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
+
+    <label for="confirm-password">Confirm password</label>
+    <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+
+    <button type="submit" id="reset-submit-btn">Save new password</button>
+    <div id="reset-msg"></div>
+  </form>
+
+  <script type="module">
+    import { supabase } from "/js/supabase-client.js";
+
+    const loginForm = document.getElementById("login-form");
+    const msg = document.getElementById("msg");
+    const btn = document.getElementById("submit-btn");
+
+    const resetForm = document.getElementById("reset-form");
+    const resetMsg = document.getElementById("reset-msg");
+    const resetBtn = document.getElementById("reset-submit-btn");
+
+    function showResetForm() {
+      loginForm.style.display = "none";
+      resetForm.style.display = "block";
+    }
+
+    // Supabase fires this when the URL contains a valid recovery/magic-link
+    // token (it parses the URL itself -- we don't need to touch location.hash).
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        showResetForm();
+      }
+    });
+
+    // If already logged in with a normal session (not a recovery link),
+    // skip straight to the dashboard. Recovery sessions are handled above
+    // instead, so check the URL for that first.
+    const isRecoveryLink = window.location.hash.includes("type=recovery");
+    if (!isRecoveryLink) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) window.location.href = "/player-home.html";
+      });
+    }
+
+    // player-home.html redirects here with ?expired=1 when the locked
+    // rolling 2-hour idle window (see api/_lib/validate-viewer-session.js)
+    // has lapsed -- this just explains why they're being asked to log in
+    // again rather than leaving it unexplained.
+    if (new URLSearchParams(window.location.search).get("expired") === "1") {
+      msg.textContent = "You were logged out after 2 hours of inactivity. Log back in to keep viewing.";
+      msg.className = "info";
+    }
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.textContent = "";
+      msg.className = "";
+      btn.disabled = true;
+      btn.textContent = "Logging in...";
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        msg.textContent = error.message;
+        msg.className = "error";
+        btn.disabled = false;
+        btn.textContent = "Log in";
+        return;
+      }
+
+      window.location.href = "/player-home.html";
+    });
+
+    resetForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      resetMsg.textContent = "";
+      resetMsg.className = "";
+
+      const newPassword = document.getElementById("new-password").value;
+      const confirmPassword = document.getElementById("confirm-password").value;
+
+      if (newPassword !== confirmPassword) {
+        resetMsg.textContent = "Passwords don't match.";
+        resetMsg.className = "error";
+        return;
+      }
+
+      resetBtn.disabled = true;
+      resetBtn.textContent = "Saving...";
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+        resetMsg.textContent = error.message;
+        resetMsg.className = "error";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Save new password";
+        return;
+      }
+
+      window.location.href = "/player-home.html";
+    });
+  </script>
+</body>
+</html>
