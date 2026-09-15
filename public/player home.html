@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — My Playbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="/css/chalk-team.css" />
+<style>
+  /* Same additions my-playbook.html makes on top of chalk-team.css --
+     this page is the real-login counterpart to that access-link page, so
+     it deliberately reuses the identical look. */
+  .welcome-line {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--gray, #8a99ac);
+    margin-top: 10px;
+  }
+  .welcome-line b { color: var(--gold, #f0b429); }
+  .role-pill {
+    display: inline-block;
+    background: rgba(240,180,41,.12);
+    color: #f0b429;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    letter-spacing: .5px;
+  }
+  .logout-link {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .5px;
+    color: var(--gray, #8a99ac);
+    text-decoration: underline;
+    cursor: pointer;
+    margin-top: 10px;
+    display: inline-block;
+  }
+  #invalid-link {
+    display: none;
+    max-width: 480px;
+    margin: 80px auto;
+    text-align: center;
+    padding: 0 24px;
+  }
+  #invalid-link h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  #invalid-link p {
+    font-family: 'DM Sans', sans-serif;
+    color: var(--gray, #8a99ac);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #invalid-link a {
+    color: var(--gold, #f0b429);
+  }
+  .real-link-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .real-play-card {
+    display: block;
+    background: var(--panel, #121820);
+    border: 1px solid var(--border, #1e2a3a);
+    border-radius: 6px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s;
+    cursor: pointer;
+  }
+  .real-play-card:hover { border-color: var(--gold, #f0b429); }
+  .real-play-card .rp-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: .5px;
+    color: var(--white, #f2ede4);
+  }
+  .real-play-card .rp-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--gray, #8a99ac);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .category-heading {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: var(--white, #f2ede4);
+    margin: 28px 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">Loading your playbook...</div>
+
+<div id="invalid-link">
+  <h2>Can't Load Your Playbook</h2>
+  <p id="invalid-message"></p>
+</div>
+
+<div id="page" style="display:none;">
+  <div class="hero" id="hero">
+    <div class="hero-tex"></div>
+    <div class="hero-fade"></div>
+    <div class="hero-inner">
+      <div class="crest" id="crest"></div>
+      <div class="team-name" id="team-name"></div>
+      <div class="welcome-line" id="welcome-line"></div>
+      <a class="logout-link" id="logout-link">Log out</a>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="box" id="status-note">
+      <span class="tag2">Your Playbook</span>
+      <span id="status-note-text"></span>
+    </div>
+  </div>
+
+  <div id="plays-by-category" style="max-width:1040px; margin:0 auto; padding:0 20px 60px;"></div>
+
+  <footer>
+    <div class="mark"><b>CHALK</b>TALK</div>
+    <div class="tagline" id="footer-tagline"></div>
+  </footer>
+</div>
+
+<script src="/js/chalk-team-common.js"></script>
+<script type="module">
+  import { supabase } from "/js/supabase-client.js";
+
+  const CT = window.ChalkTeam;
+
+  const ROLE_LABELS = {
+    head_coach: "Head Coach",
+    assistant_coach: "Assistant Coach",
+    graduate_assistant: "Graduate Assistant",
+    dbo: "DBO",
+    athlete: "Athlete",
+    parent: "Parent",
+  };
+
+  function showInvalid(message, opts = {}) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("invalid-message").innerHTML = message;
+    document.getElementById("invalid-link").style.display = "block";
+    if (opts.redirectExpired) {
+      setTimeout(() => {
+        window.location.href = "/player-login.html?expired=1";
+      }, 2500);
+    }
+  }
+
+  // Opens a real player-facing play in a new tab, going through
+  // /api/view-play with our own session's Authorization header (same
+  // pattern create.html already uses for coaches) instead of a plain
+  // <a href>, since a plain link navigation can't carry a custom header
+  // and the raw Blob URL always forces a download.
+  async function openPlay(playId, accessToken) {
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write("Loading play...");
+    }
+    try {
+      const res = await fetch(`/api/view-play?playId=${encodeURIComponent(playId)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const html = await res.text();
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch (err) {
+      if (win) win.document.write("Couldn't load this play. Please try again.");
+    }
+  }
+
+  async function init() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      window.location.href = "/player-login.html";
+      return;
+    }
+
+    let data;
+    try {
+      const res = await fetch("/api/my-teams", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      data = await res.json();
+      if (res.status === 401 && data && data.expired) {
+        showInvalid("Your session timed out after 2 hours of inactivity. Redirecting you to log back in&hellip;", { redirectExpired: true });
+        return;
+      }
+      if (!res.ok || !data || !data.ok) {
+        showInvalid((data && data.error) || "Couldn't load your playbook. Please try logging in again.");
+        return;
+      }
+    } catch (err) {
+      showInvalid("Couldn't reach the server. Check your connection and try again.");
+      return;
+    }
+
+    // Schema today is 1:1 (one login = one roster row = one program), so
+    // this is always exactly one team -- see api/my-teams.js for why the
+    // response shape is still an array.
+    const team = data.teams[0];
+    if (!team) {
+      showInvalid("This account isn't linked to a team yet. Ask your coach.");
+      return;
+    }
+
+    const { program, plays, role, memberName } = team;
+
+    CT.applyAccent(program);
+    document.title = `My Playbook — ${program.name} — ChalkTalk`;
+    CT.renderCrest(document.getElementById("crest"), program);
+    document.getElementById("team-name").textContent = program.name.toUpperCase();
+
+    const roleLabel = ROLE_LABELS[role] || role;
+    document.getElementById("welcome-line").innerHTML = memberName
+      ? `Welcome, <b>${CT.escapeHtml(memberName)}</b> &middot; <span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`
+      : `<span class="role-pill">${CT.escapeHtml(roleLabel)}</span>`;
+
+    document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+
+    const totalPlays = plays.length;
+    document.getElementById("status-note-text").textContent = totalPlays
+      ? `${totalPlays} play${totalPlays === 1 ? "" : "s"} published so far. Tap any play to open its full diagrams and coaching notes.`
+      : "No plays have been published yet. Check back once your coaching staff builds and publishes one.";
+
+    const container = document.getElementById("plays-by-category");
+    if (!totalPlays) {
+      container.innerHTML = `<p style="color:var(--gray,#8a99ac); font-family:'DM Sans',sans-serif; padding:20px 0;">Nothing published yet for this program.</p>`;
+    } else {
+      CT.CATEGORIES.forEach((cat) => {
+        const catPlays = plays.filter((p) => p.play_type === cat.key);
+        if (!catPlays.length) return;
+        const heading = document.createElement("div");
+        heading.className = "category-heading";
+        heading.textContent = cat.label;
+        container.appendChild(heading);
+
+        const grid = document.createElement("div");
+        grid.className = "real-link-grid";
+        catPlays.forEach((p) => {
+          const card = document.createElement("div");
+          card.className = "real-play-card";
+          card.innerHTML = `
+            <div class="rp-title">${CT.escapeHtml(p.title)}</div>
+            <div class="rp-meta">${p.phase_count || "?"} phases &middot; ${CT.escapeHtml(p.court_type || "half")} court</div>
+          `;
+          card.addEventListener("click", () => openPlay(p.id, session.access_token));
+          grid.appendChild(card);
+        });
+        container.appendChild(grid);
+      });
+    }
+
+    document.getElementById("logout-link").addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      window.location.href = "/player-login.html";
+    });
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("page").style.display = "block";
+  }
+
+  init();
+</script>
+</body>
+</html>
