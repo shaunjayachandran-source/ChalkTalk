@@ -592,14 +592,43 @@ footer .tagline{
 #access-modal h3{font-family:'Bebas Neue',sans-serif; color:var(--gold); font-size:1.4rem; margin-bottom:10px; letter-spacing:.02em;}
 #access-modal p{color:var(--dim); font-size:.86rem; line-height:1.5; margin-bottom:16px;}
 #access-modal button{
+  background:none;
+  color:var(--dim);
+  border:none;
+  padding:8px 18px;
+  font-family:'DM Mono',monospace;
+  font-size:.78rem;
+  text-decoration:underline;
+  cursor:pointer;
+}
+/* Two real-login entry points (Sep 15, 2026) -- there's no way for this
+   public page to know in advance whether the visitor is a coach or a
+   player/parent, so the modal offers both; each stashes the clicked play's
+   id in sessionStorage first (see showAccessModal() in chalk-team-common.js)
+   so the matching login page can drop them straight back into it. */
+.access-modal-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-bottom:14px;
+}
+.access-modal-btn{
+  display:block;
   background:var(--gold);
   color:#0d1017;
   border:none;
   border-radius:6px;
-  padding:8px 18px;
+  padding:10px 18px;
   font-family:'DM Mono',monospace;
   font-size:.8rem;
+  font-weight:600;
+  text-decoration:none;
   cursor:pointer;
+}
+.access-modal-btn.secondary{
+  background:transparent;
+  color:var(--gold);
+  border:1px solid var(--gold);
 }
 
 #loading, #not-found{text-align:center; padding:80px 20px; color:var(--dim);}
