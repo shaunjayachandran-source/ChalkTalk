@@ -322,7 +322,7 @@
       <h2>Team members</h2>
       <div class="sub">Players, parents, and other coaches with a share link into this program.</div>
       <table id="members-table">
-        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th>Link status</th><th>Last used</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th>Link status</th><th>Last used</th><th></th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -333,6 +333,8 @@
         <input type="text" id="new-member-email" placeholder="Email (optional)" />
         <button class="action" id="add-member-btn">Add team member + generate link</button>
       </div>
+
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">New: for Athlete/Parent rows, "Invite Login" (below) sends a real username+password account instead of the share-link token above -- currently piloted on Dartmouth only. It's separate from the share link and doesn't replace it; both can exist for the same roster row.</div>
 
       <div class="team-toolbar">
         <button class="action secondary" id="download-xlsx-btn">&darr; Download roster template (.xlsx)</button>
@@ -814,6 +816,15 @@
         ? new Date(activeLink.last_used_at).toLocaleDateString()
         : "never";
 
+      // "Invite Login" is only offered for athlete/parent rows -- coaching
+      // staff logins go through the separate Invite Coach card below. This
+      // doesn't check or show whether a login already exists for this row
+      // (viewer_accounts has no RLS policies, so the coach's own
+      // session-scoped client can't read it -- see the migration SQL) --
+      // a known v1 limitation. Re-clicking just re-invites, same posture
+      // as Invite Coach.
+      const canInviteLogin = member.role === "athlete" || member.role === "parent";
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${member.name}</td>
@@ -823,9 +834,48 @@
         <td>${status}</td>
         <td>${lastUsed}</td>
         <td>${activeLink ? `<button class="action danger" data-link-id="${activeLink.id}">Revoke</button>` : ""}</td>
+        <td>${canInviteLogin ? `<button class="action secondary" data-invite-login-id="${member.id}" data-invite-login-name="${member.name}">Invite Login</button>` : ""}</td>
       `;
       tbody.appendChild(tr);
     }
+
+    tbody.querySelectorAll("button[data-invite-login-id]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const memberId = btn.dataset.inviteLoginId;
+        const memberName = btn.dataset.inviteLoginName;
+        const email = window.prompt(
+          `Email to invite for ${memberName}'s login.\n\nFor a below-high-school athlete, enter the PARENT's email -- they'll hold this login on the athlete's behalf. For a high-school-or-above athlete, enter the athlete's own email.`
+        );
+        if (!email) return;
+
+        btn.disabled = true;
+        btn.textContent = "Inviting...";
+
+        const { data: { session } } = await supabase.auth.getSession();
+        let result;
+        try {
+          const res = await fetch("/api/invite-viewer", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ programId: currentProgramId, teamMemberId: memberId, email: email.trim() }),
+          });
+          result = await res.json();
+          if (!res.ok) throw new Error(result.error || "Invite failed");
+        } catch (err) {
+          alert("Couldn't invite: " + err.message);
+          btn.disabled = false;
+          btn.textContent = "Invite Login";
+          return;
+        }
+
+        alert(`Invited ${email.trim()}. They'll get a real login email at /player-login.html to set their password.`);
+        btn.disabled = false;
+        btn.textContent = "Invite Login";
+      });
+    });
 
     tbody.querySelectorAll("button[data-link-id]").forEach(btn => {
       btn.addEventListener("click", async () => {
