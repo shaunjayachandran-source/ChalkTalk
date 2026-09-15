@@ -19,6 +19,7 @@
     --gray:      #6b7a8d;
     --gray-2:    #8a99ac;
     --chalk:     #f2ede4;
+    --teal:      #1abc9c;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -119,6 +120,21 @@
     opacity: .9;
   }
 
+  /* Bebas Neue headline sitting under the wordmark — carries the actual
+     positioning statement, while the wordmark stays the marker-scrawl
+     brand mark rather than doubling as the h1. */
+  .headline {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(30px, 5.2vw, 54px);
+    line-height: 1.05;
+    letter-spacing: .5px;
+    color: var(--white);
+    max-width: 720px;
+    margin: 14px auto 0;
+    text-transform: uppercase;
+  }
+  .headline .accent { color: var(--gold); }
+
   .tagline {
     font-family: 'DM Sans', sans-serif;
     font-size: clamp(16px, 2.2vw, 20px);
@@ -180,6 +196,46 @@
   }
   .btn.secondary:hover { color: var(--gold); border-color: var(--gray); }
 
+  /* ─────────── FEATURE ROW (icon row) ─────────── */
+  .features {
+    padding: 8px 28px 64px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 26px;
+  }
+
+  .feature {
+    text-align: left;
+  }
+
+  .feature-icon {
+    width: 30px;
+    height: 30px;
+    color: var(--teal);
+    margin-bottom: 14px;
+  }
+  .feature-icon svg { width: 100%; height: 100%; }
+
+  .feature h4 {
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+
+  .feature p {
+    font-size: 13px;
+    color: var(--gray-2);
+    line-height: 1.55;
+  }
+
   /* ─────────── EXPLAINER ─────────── */
   .explainer {
     padding: 56px 28px 64px;
@@ -189,8 +245,9 @@
 
   .explainer-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
+    grid-template-columns: 1fr;
+    max-width: 460px;
+    margin: 0 auto;
   }
 
   .card {
@@ -283,6 +340,8 @@
   @media (max-width: 760px) {
     .topbar { padding: 14px 16px; }
     .hero { padding: 48px 18px 40px; }
+    .features { padding: 4px 18px 44px; }
+    .features-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
     .explainer { padding: 36px 18px 44px; }
     .explainer-grid { grid-template-columns: 1fr; }
     .different { padding: 28px 18px 56px; }
@@ -307,6 +366,8 @@
        without sacrificing the document's outline (h1 lives below in the
        differentiator section, where the actual heading content is). -->
   <div class="wordmark">ChalkTalk</div>
+
+  <h1 class="headline">Teach The Play. <span class="accent">Not Just The Diagram.</span></h1>
 
   <p class="tagline">
     Interactive playbooks for players, parents, and coaches.
@@ -337,30 +398,64 @@
   </div>
 </section>
 
+<!-- ─────────── FEATURE ROW ─────────── -->
+<section class="features">
+  <div class="features-grid">
+    <div class="feature">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="14" width="4" height="7"/>
+          <rect x="10" y="9" width="4" height="12"/>
+          <rect x="17" y="4" width="4" height="17"/>
+        </svg>
+      </div>
+      <h4>Phase-by-Phase</h4>
+      <p>Break complex actions into clear teaching moments, one phase at a time.</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/>
+          <circle cx="12" cy="12" r="3.2"/>
+        </svg>
+      </div>
+      <h4>Coach's Eye</h4>
+      <p>Highlight timing, reads, and the details that actually matter.</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4v6c0 2 1 3 3 3h13"/>
+          <path d="M4 20v-6c0-2 1-3 3-3h13"/>
+          <path d="M16 4l4 3-4 3"/>
+          <path d="M16 20l4-3-4-3"/>
+        </svg>
+      </div>
+      <h4>Reads + Counters</h4>
+      <p>Teach the options and counters — not just the movement.</p>
+    </div>
+
+    <div class="feature">
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="3"/>
+          <circle cx="17" cy="9" r="2.4"/>
+          <path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+          <path d="M14.5 14.2c2.6.3 4.5 2.5 4.5 5.3"/>
+        </svg>
+      </div>
+      <h4>Built For The Program</h4>
+      <p>Coaches build it. Players learn it. Teams run it.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ─────────── EXPLAINER ─────────── -->
 <section class="explainer">
   <div class="explainer-grid">
-    <div class="card">
-      <p class="eyebrow">What it is</p>
-      <h3>A Playbook That Opens On A Phone</h3>
-      <p>
-        Every set is a diagram you can step through, phase by phase. Players
-        see where they're supposed to be. Coaches stop redrawing the same
-        play on a napkin.
-      </p>
-    </div>
-
-    <div class="card">
-      <p class="eyebrow">Who it's for</p>
-      <h3>Programs, Not Apps</h3>
-      <p>
-        Built around your team. AAU programs, varsity staffs, and training
-        groups get one private link per program — players, parents, and
-        coaches all open the same playbook from anywhere.
-      </p>
-    </div>
-
-    <div class="card">
+    <div class="card" style="text-align:center;">
       <p class="eyebrow">What's different</p>
       <h3>Made For Basketball, Not Slides</h3>
       <p>
