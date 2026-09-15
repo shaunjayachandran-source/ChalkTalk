@@ -3,43 +3,39 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChalkTalk — Team Page</title>
+<title>Offense — ChalkTalk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="/css/chalk-team.css" />
 </head>
 <body>
 
-<div id="loading">Loading team page...</div>
+<div id="loading">Loading offense page...</div>
 <div id="not-found" style="display:none;">No program found for this link.</div>
 
 <div id="page" style="display:none;">
-  <div class="hero" id="hero">
-    <div class="hero-tex"></div>
-    <div class="hero-fade"></div>
-    <div class="hero-inner">
-      <div class="crest" id="crest"></div>
-      <div class="team-name" id="team-name"></div>
-      <div class="team-sub" id="team-sub"></div>
-      <div class="hero-line">Playbook directory — built for coaches, players, and parents to see the same system explained at the depth each of them needs.</div>
-      <div class="sign-accent"><i></i><span id="sign-accent-text">COACH-BUILT PLAYBOOK DIRECTORY</span></div>
-      <div class="coach-line" id="coach-line"></div>
+  <nav class="section-nav" id="section-nav"></nav>
 
-      <div class="search-wrap">
-        <input type="text" id="chalkSearch" placeholder="Search sections, plays..." autocomplete="off" />
-        <div class="search-results" id="chalkSearchResults"></div>
-      </div>
+  <div class="page-header">
+    <a class="home-link" href="team.html" id="home-link">&larr; Return to Team Hub</a>
+    <div class="page-title-row">
+      <h1>Offense</h1>
+      <div class="team-tag" id="team-tag"></div>
+    </div>
+
+    <div class="search-wrap" style="margin:18px 0 0;max-width:100%;">
+      <input type="text" id="chalkSearch" placeholder="Search plays, sets, coverages..." autocomplete="off" />
+      <div class="search-results" id="chalkSearchResults"></div>
     </div>
   </div>
 
-  <div class="notes">
-    <div class="box" id="status-note">
-      <span class="tag2">Directory Status</span>
-      <span id="status-note-text"></span>
+  <section class="section" id="offense">
+    <div class="section-head">
+      <h2>Offense</h2>
+      <p>Half-Court Sets &amp; Coverages</p>
     </div>
-  </div>
-
-  <div class="link-grid" id="link-grid"></div>
+    <div id="offense-content"></div>
+  </section>
 
   <footer>
     <div class="mark"><b>CHALK</b>TALK</div>
@@ -60,6 +56,8 @@
   import { supabase } from "/js/supabase-client.js";
 
   const CT = window.ChalkTeam;
+  const PLAY_TYPE = "offense";
+  const SUBGROUPS = CT.OFFENSE_SUBGROUPS; // ["Man", "Zone", "Press Break"]
 
   async function init() {
     const slug = new URLSearchParams(window.location.search).get("slug");
@@ -71,7 +69,7 @@
 
     const { data: program, error: programErr } = await supabase
       .from("team_directory")
-      .select("id, slug, name, level, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, crest_image_url, crest_svg, color_primary, color_secondary, league_label, venue_label, location_label")
+      .select("id, slug, name, level, crest_label, crest_font, color_primary, color_secondary")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -81,68 +79,73 @@
       return;
     }
 
-    const { data: playsData } = await supabase
-      .from("play_directory")
-      .select("title, play_type, phase_count, court_type, updated_at")
-      .eq("program_id", program.id);
-    const plays = playsData || [];
+    const { plays, accessToken } = await CT.getPlaysForViewer(
+      supabase,
+      program.id,
+      "title, play_type, sub_category, phase_count, court_type, updated_at"
+    );
+    const openPlay = CT.makePlayOpener(accessToken);
+    const catPlays = plays.filter((p) => p.play_type === PLAY_TYPE);
 
     CT.applyAccent(program);
-    CT.renderHeroPhoto(document.getElementById("hero"), program);
-
-    document.title = `${program.name} — ChalkTalk`;
-    CT.renderCrest(document.getElementById("crest"), program);
-    document.getElementById("team-name").textContent = program.name.toUpperCase();
-    document.getElementById("team-sub").innerHTML = CT.teamSubFor(program);
-    document.getElementById("sign-accent-text").innerHTML = CT.signAccentFor(program);
-    document.getElementById("coach-line").innerHTML = CT.coachLineFor(program);
+    document.title = `Offense — ${program.name} — ChalkTalk`;
+    document.getElementById("home-link").href = `team.html?slug=${encodeURIComponent(slug)}`;
+    document.getElementById("team-tag").textContent = program.name;
     document.getElementById("footer-tagline").textContent = `${program.name} · Coach-Built Playbooks`;
+    document.getElementById("section-nav").innerHTML = CT.renderSectionNav(slug, PLAY_TYPE);
 
-    const totalPlays = plays.length;
-    document.getElementById("status-note-text").innerHTML = totalPlays
-      ? `<b>${totalPlays} play${totalPlays === 1 ? "" : "s"}</b> built so far. This directory shows titles only &mdash; full diagrams and coaching notes are shared privately with each team member's own access link.`
-      : `No plays have been built yet for this program. Pick a section below &mdash; each card fills in once the coaching staff runs a play through ChalkTalk's Intake Mode.`;
+    const content = document.getElementById("offense-content");
 
-    // Counts per category, for the "X of Y built" line on each link card.
-    // "Y" (the denominator) reflects how many plays currently exist in that
-    // category — there is no fixed target count in the data model, so we
-    // show "built" as the live count and skip a fake denominator when 0.
-    const counts = {};
-    CT.CATEGORIES.forEach((cat) => {
-      counts[cat.key] = plays.filter((p) => p.play_type === cat.key).length;
-    });
+    if (catPlays.length === 0) {
+      // Nothing built yet in this category — show the standard sub-category
+      // placeholders so coaches/parents can see the shape of what's coming.
+      SUBGROUPS.forEach((sub) => {
+        const head = document.createElement("div");
+        head.className = "subhead";
+        head.textContent = sub;
+        content.appendChild(head);
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        grid.appendChild(CT.ghostCard(`No ${sub.toLowerCase()} sets yet`, "Runs through Intake Mode will show up here."));
+        content.appendChild(grid);
+      });
+    } else {
+      // Real plays exist — bucket them strictly by the real sub_category
+      // column, set explicitly by the coach at play-creation time (see
+      // public/create.html). There is no inference from title text and no
+      // "Other" catch-all bucket: every offense play has a real man/zone/
+      // press_break sub_category once the coach confirms it during intake.
+      const buckets = {};
+      SUBGROUPS.forEach((s) => (buckets[s] = []));
+      catPlays.forEach((p) => {
+        const sub = CT.subgroupLabel(p.sub_category);
+        if (sub && buckets[sub]) buckets[sub].push(p);
+      });
 
-    const grid = document.getElementById("link-grid");
-    CT.CATEGORIES.forEach((cat) => {
-      const a = document.createElement("a");
-      a.className = "link-card";
-      a.href = `team-${cat.key}.html?slug=${encodeURIComponent(slug)}`;
-      const n = counts[cat.key];
-      a.innerHTML = `
-        <div class="lc-title">${CT.escapeHtml(cat.label)}</div>
-        <div class="lc-desc">${CT.escapeHtml(cat.linkDesc)}</div>
-        <div class="lc-count">${n} ${n === 1 ? "play" : "plays"} built</div>
-      `;
-      grid.appendChild(a);
-    });
+      SUBGROUPS.forEach((sub) => {
+        const items = buckets[sub];
+        const head = document.createElement("div");
+        head.className = "subhead";
+        head.textContent = sub;
+        content.appendChild(head);
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        if (items.length) {
+          items.forEach((p) => grid.appendChild(CT.playCard(p, { onOpen: openPlay })));
+        } else {
+          grid.appendChild(CT.ghostCard(`No ${sub.toLowerCase()} sets yet`, "Runs through Intake Mode will show up here."));
+        }
+        content.appendChild(grid);
+      });
+    }
 
-    // Live search across the 5 category cards + every real play title.
-    const searchItems = CT.CATEGORIES.map((cat) => ({
-      label: cat.label,
-      hint: cat.linkDesc,
-      section: "Section",
-      href: `team-${cat.key}.html?slug=${encodeURIComponent(slug)}`,
-    })).concat(
-      plays.map((p) => {
-        const cat = CT.CATEGORIES.find((c) => c.key === p.play_type);
-        return {
-          label: p.title,
-          hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
-          section: cat ? cat.label : "Other",
-          href: cat ? `team-${cat.key}.html?slug=${encodeURIComponent(slug)}` : `team.html?slug=${encodeURIComponent(slug)}`,
-        };
-      })
-    );
+    const searchItems = catPlays.map((p) => ({
+      label: p.title,
+      hint: `${p.phase_count || "?"} phases · ${p.court_type || "half"} court`,
+      section: "Offense",
+      sub: CT.subgroupLabel(p.sub_category) || "",
+      onSelect: () => openPlay(p),
+    }));
     CT.initSearch("chalkSearch", "chalkSearchResults", searchItems);
 
     document.getElementById("loading").style.display = "none";
