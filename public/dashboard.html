@@ -108,16 +108,6 @@
     font-family: 'DM Mono', monospace;
     font-size: 13px;
   }
-  #token-reveal {
-    display: none;
-    background: rgba(240,180,41,.1);
-    border: 1px solid var(--gold);
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-top: 14px;
-    font-size: 12px;
-    word-break: break-all;
-  }
   #empty-state, #loading { color: var(--muted); font-size: 13px; padding: 20px 0; }
   select#program-select {
     background: #0d1017;
@@ -320,9 +310,9 @@
 
     <div class="card">
       <h2>Team members</h2>
-      <div class="sub">Players, parents, and other coaches with a share link into this program.</div>
+      <div class="sub">Your roster. For Athlete/Parent rows, use "Invite Login" to send a real username+password account (currently piloted on Dartmouth only).</div>
       <table id="members-table">
-        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th>Link status</th><th>Last used</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
 
@@ -331,20 +321,16 @@
         <select id="new-member-role"></select>
         <input type="text" id="new-member-phone" placeholder="Phone (optional)" />
         <input type="text" id="new-member-email" placeholder="Email (optional)" />
-        <button class="action" id="add-member-btn">Add team member + generate link</button>
+        <button class="action" id="add-member-btn">Add team member</button>
       </div>
-
-      <div class="sub" style="margin-top:8px; margin-bottom:0;">New: for Athlete/Parent rows, "Invite Login" (below) sends a real username+password account instead of the share-link token above -- currently piloted on Dartmouth only. It's separate from the share link and doesn't replace it; both can exist for the same roster row.</div>
 
       <div class="team-toolbar">
         <button class="action secondary" id="download-xlsx-btn">&darr; Download roster template (.xlsx)</button>
         <button class="action secondary" id="upload-xlsx-btn">&uarr; Upload roster (.xlsx)</button>
         <input type="file" id="xlsx-file-input" accept=".xlsx" style="display:none;" />
       </div>
-      <div class="sub" style="margin-top:8px; margin-bottom:0;">The downloaded template includes your current roster plus blank rows with a real dropdown on the Role column (Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, Parent) -- no typos possible. Fill it in in Excel/Google Sheets/Numbers and upload it back; each new row generates a team member + access link, same as the one-at-a-time form above.</div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">The downloaded template includes your current roster plus blank rows with a real dropdown on the Role column (Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, Parent) -- no typos possible. Fill it in in Excel/Google Sheets/Numbers and upload it back; each new row is added to the roster, same as the one-at-a-time form above.</div>
       <div id="csv-summary"></div>
-
-      <div id="token-reveal"></div>
     </div>
 
     <div class="card">
@@ -454,18 +440,6 @@
     wm.innerHTML = Array.from({ length: 140 }, () => `<span>${text}</span>`).join("");
   }
 
-  async function sha256Hex(text) {
-    const data = new TextEncoder().encode(text);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-
-  function randomToken(prefix) {
-    const bytes = crypto.getRandomValues(new Uint8Array(24));
-    const b64url = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    return `${prefix}-${b64url}`;
-  }
-
   async function loadPrograms() {
     const { data, error } = await supabase
       .from("programs")
@@ -497,7 +471,6 @@
       updateBuildPlayLink(currentProgramId);
       updateTeamPageLink(program);
       renderWatermark(program || {});
-      document.getElementById("token-reveal").style.display = "none";
       document.getElementById("csv-summary").style.display = "none";
       await loadProgramDetail(currentProgramId);
     });
@@ -801,21 +774,7 @@
     tbody.innerHTML = "";
     if (error || !members) return;
 
-    const { data: links } = await supabase
-      .from("access_links")
-      .select("id, team_member_id, revoked_at, last_used_at")
-      .eq("program_id", programId);
-
     for (const member of members) {
-      const memberLinks = (links || []).filter(l => l.team_member_id === member.id);
-      const activeLink = memberLinks.find(l => !l.revoked_at);
-      const status = activeLink
-        ? `<span class="pill active">active</span>`
-        : `<span class="pill revoked">no active link</span>`;
-      const lastUsed = activeLink?.last_used_at
-        ? new Date(activeLink.last_used_at).toLocaleDateString()
-        : "never";
-
       // "Invite Login" is only offered for athlete/parent rows -- coaching
       // staff logins go through the separate Invite Coach card below. This
       // doesn't check or show whether a login already exists for this row
@@ -831,9 +790,6 @@
         <td><span class="pill ${member.role}">${roleLabel(member.role)}</span></td>
         <td>${member.phone || "&mdash;"}</td>
         <td>${member.email || "&mdash;"}</td>
-        <td>${status}</td>
-        <td>${lastUsed}</td>
-        <td>${activeLink ? `<button class="action danger" data-link-id="${activeLink.id}">Revoke</button>` : ""}</td>
         <td>${canInviteLogin ? `<button class="action secondary" data-invite-login-id="${member.id}" data-invite-login-name="${member.name}">Invite Login</button>` : ""}</td>
       `;
       tbody.appendChild(tr);
@@ -874,24 +830,6 @@
         alert(`Invited ${email.trim()}. They'll get a real login email at /player-login.html to set their password.`);
         btn.disabled = false;
         btn.textContent = "Invite Login";
-      });
-    });
-
-    tbody.querySelectorAll("button[data-link-id]").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        btn.textContent = "Revoking...";
-        const { error } = await supabase
-          .from("access_links")
-          .update({ revoked_at: new Date().toISOString() })
-          .eq("id", btn.dataset.linkId);
-        if (error) {
-          alert("Couldn't revoke: " + error.message);
-          btn.disabled = false;
-          btn.textContent = "Revoke";
-          return;
-        }
-        await loadMembers(currentProgramId);
       });
     });
   }
@@ -981,79 +919,21 @@
   });
 
   // Shared by the one-at-a-time "Add team member" button and the CSV bulk
-  // upload -- inserts the team_members row, generates+hashes a token, and
-  // inserts the matching access_links row. Returns { ok: true, token } or
+  // upload -- just inserts the roster row. Real access for athlete/parent
+  // rows is granted separately via the "Invite Login" button (a real
+  // Supabase Auth account, see api/invite-viewer.js) -- there is no more
+  // tokenless access-link path. Returns { ok: true, name, email } or
   // { ok: false, error }.
-  async function createTeamMemberWithLink(programId, { name, role, phone, email }, creatorUserId) {
-    const { data: memberRow, error: memberErr } = await supabase
+  async function createTeamMember(programId, { name, role, phone, email }) {
+    const { error: memberErr } = await supabase
       .from("team_members")
-      .insert({ program_id: programId, name, role, phone: phone || null, email: email || null })
-      .select()
-      .single();
+      .insert({ program_id: programId, name, role, phone: phone || null, email: email || null });
 
     if (memberErr) {
       return { ok: false, error: `Couldn't add ${name}: ${memberErr.message}` };
     }
 
-    const token = randomToken(role);
-    const tokenHash = await sha256Hex(token);
-
-    const { error: linkErr } = await supabase.from("access_links").insert({
-      program_id: programId,
-      team_member_id: memberRow.id,
-      token_hash: tokenHash,
-      role,
-      created_by: creatorUserId,
-    });
-
-    if (linkErr) {
-      return { ok: false, error: `${name} was added, but their link failed to generate: ${linkErr.message}` };
-    }
-
-    return { ok: true, name, token, email };  }
-
-    // Sends the "your playbook is ready" email to a newly-added team member,
-  // via /api/notify-team-member (Resend, not Supabase Auth -- team members
-  // never get a real Supabase account). Only called when an email address
-  // was actually provided. Never throws -- a failed send should never
-  // block showing the coach the manual copy-link fallback.
-  async function notifyTeamMemberByEmail({ name, email, token }) {
-    if (!email) return "no email on file";
-    const { data: session } = await supabase.auth.getSession();
-    const program = programs.find((p) => p.id === currentProgramId);
-    const link = `${window.location.origin}/my-playbook.html?token=${token}`;
-    try {
-      const res = await fetch("/api/notify-team-member", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.session.access_token}`,
-        },
-        body: JSON.stringify({
-          programId: currentProgramId,
-          programName: program?.name || null,
-          email,
-          name,
-          link,
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok) return `email failed: ${result.error || "unknown error"}`;
-      return "emailed";
-    } catch (err) {
-      return `email failed: ${err.message}`;
-    }
-  }
-
-  function showTokenReveal(entries) {
-    const reveal = document.getElementById("token-reveal");
-    reveal.style.display = "block";
-    const base = window.location.origin;
-    reveal.innerHTML = `
-      <strong>Copy and send ${entries.length > 1 ? "these links" : "this link"} now — ${entries.length > 1 ? "they" : "it"} won't be shown again.</strong><br/>
-      Send each person their own link below — it's what gets them into their real playbook.<br/>
-      ${entries.map((e) => `<code>${e.name}: ${base}/my-playbook.html?token=${e.token}</code>${e.emailStatus ? ` <em>(${e.emailStatus})</em>` : ""}`).join("<br/>")}
-    `;
+    return { ok: true, name, email };
   }
 
   document.getElementById("add-member-btn").addEventListener("click", async () => {
@@ -1071,15 +951,10 @@
     btn.disabled = true;
     btn.textContent = "Adding...";
 
-    const { data: session } = await supabase.auth.getSession();
-    const result = await createTeamMemberWithLink(
-      currentProgramId,
-      { name, role, phone, email },
-      session.session.user.id
-    );
+    const result = await createTeamMember(currentProgramId, { name, role, phone, email });
 
     btn.disabled = false;
-    btn.textContent = "Add team member + generate link";
+    btn.textContent = "Add team member";
 
     if (!result.ok) {
       alert(result.error);
@@ -1087,11 +962,9 @@
       return;
     }
 
-        nameInput.value = "";
+    nameInput.value = "";
     phoneInput.value = "";
     emailInput.value = "";
-    result.emailStatus = await notifyTeamMemberByEmail(result);
-    showTokenReveal([result]);
     await loadMembers(currentProgramId);
   });
 
@@ -1201,9 +1074,6 @@
       return;
     }
 
-    const { data: session } = await supabase.auth.getSession();
-    const creatorUserId = session.session.user.id;
-
     const successes = [];
     const failures = [];
     const totalRows = ws.rowCount - 1;
@@ -1225,9 +1095,8 @@
       }
 
       summary.textContent = `Adding ${successes.length + failures.length + 1} of ${totalRows}...`;
-           const result = await createTeamMemberWithLink(currentProgramId, { name, role, phone, email }, creatorUserId);
-            if (result.ok) {
-        result.emailStatus = await notifyTeamMemberByEmail(result);
+      const result = await createTeamMember(currentProgramId, { name, role, phone, email });
+      if (result.ok) {
         successes.push(result);
       } else {
         failures.push(result.error);
@@ -1240,7 +1109,6 @@
       ${failures.length ? `<br/>${failures.map((f) => `&bull; ${f}`).join("<br/>")}` : ""}
     `;
 
-    if (successes.length) showTokenReveal(successes);
     await loadMembers(currentProgramId);
   });
 
