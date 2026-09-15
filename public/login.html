@@ -91,6 +91,7 @@
   }
   #msg.error { color: #ff7b6e; }
   #msg.info { color: var(--muted); }
+  #mfa-msg.error { color: #ff7b6e; }
 </style>
 </head>
 <body>
@@ -127,6 +128,22 @@
     <div id="reset-msg"></div>
   </form>
 
+  <!-- Shown after a correct password when the account has 2FA enabled
+       (Sep 15, 2026 -- optional per-coach, set up from the dashboard's
+       Security card). Supabase already has a real password-verified
+       session at this point (AAL1) -- this form just completes the second
+       factor to reach AAL2 before goPostLogin() is allowed to proceed. -->
+  <form class="card" id="mfa-form" style="display:none;">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Enter your 6-digit code</p>
+
+    <label for="mfa-code">Authenticator code</label>
+    <input type="text" id="mfa-code" required maxlength="6" autocomplete="one-time-code" inputmode="numeric" />
+
+    <button type="submit" id="mfa-submit-btn">Verify</button>
+    <div id="mfa-msg"></div>
+  </form>
+
   <script type="module">
     import { supabase } from "/js/supabase-client.js";
 
@@ -138,9 +155,44 @@
     const resetMsg = document.getElementById("reset-msg");
     const resetBtn = document.getElementById("reset-submit-btn");
 
+    const mfaForm = document.getElementById("mfa-form");
+    const mfaMsg = document.getElementById("mfa-msg");
+    const mfaSubmitBtn = document.getElementById("mfa-submit-btn");
+    let mfaPendingDefaultUrl = null;
+
     function showResetForm() {
       loginForm.style.display = "none";
       resetForm.style.display = "block";
+    }
+
+    function showMfaForm(defaultUrl) {
+      mfaPendingDefaultUrl = defaultUrl;
+      loginForm.style.display = "none";
+      mfaForm.style.display = "block";
+    }
+
+    // Coach-tier MFA (Sep 15, 2026, optional -- set up from the dashboard's
+    // Security card). A correct password alone only reaches Supabase's AAL1;
+    // if the account has a verified TOTP factor, Supabase's own
+    // getAuthenticatorAssuranceLevel() reports a `nextLevel` of aal2, which
+    // this gate catches and asks for the 6-digit code before letting
+    // goPostLogin() proceed. An account with no factor enrolled has
+    // nextLevel === currentLevel and skips straight through, unchanged
+    // from before this feature existed.
+    async function proceedPastMfaGate(defaultUrl) {
+      const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (error) {
+        // Fail open to the normal landing rather than stranding a coach on
+        // a blank screen over an MFA-status check failure -- RLS/session
+        // validity is still enforced everywhere else regardless.
+        await goPostLogin(defaultUrl);
+        return;
+      }
+      if (data.nextLevel === "aal2" && data.currentLevel !== "aal2") {
+        showMfaForm(defaultUrl);
+        return;
+      }
+      await goPostLogin(defaultUrl);
     }
 
     // Deep-link-back after login (Sep 15, 2026): if the coach arrived here
@@ -200,7 +252,7 @@
     const isRecoveryLink = window.location.hash.includes("type=recovery");
     if (!isRecoveryLink) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) goPostLogin("/dashboard.html");
+        if (session) proceedPastMfaGate("/dashboard.html");
       });
     }
 
@@ -224,7 +276,7 @@
         return;
       }
 
-      await goPostLogin("/dashboard.html");
+      await proceedPastMfaGate("/dashboard.html");
     });
 
     resetForm.addEventListener("submit", async (e) => {
@@ -254,7 +306,53 @@
         return;
       }
 
-      await goPostLogin("/dashboard.html");
+      await proceedPastMfaGate("/dashboard.html");
+    });
+
+    mfaForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      mfaMsg.textContent = "";
+      mfaMsg.className = "";
+      const code = document.getElementById("mfa-code").value.trim();
+      if (!code) return;
+
+      mfaSubmitBtn.disabled = true;
+      mfaSubmitBtn.textContent = "Verifying...";
+
+      const { data: factors, error: factorsErr } = await supabase.auth.mfa.listFactors();
+      const factor = factorsErr ? null : (factors.totp || []).find((f) => f.status === "verified");
+      if (!factor) {
+        mfaMsg.textContent = "Couldn't find your 2FA setup. Try logging in again.";
+        mfaMsg.className = "error";
+        mfaSubmitBtn.disabled = false;
+        mfaSubmitBtn.textContent = "Verify";
+        return;
+      }
+
+      const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: factor.id });
+      if (challengeErr) {
+        mfaMsg.textContent = challengeErr.message;
+        mfaMsg.className = "error";
+        mfaSubmitBtn.disabled = false;
+        mfaSubmitBtn.textContent = "Verify";
+        return;
+      }
+
+      const { error: verifyErr } = await supabase.auth.mfa.verify({
+        factorId: factor.id,
+        challengeId: challenge.id,
+        code,
+      });
+
+      if (verifyErr) {
+        mfaMsg.textContent = "That code didn't work -- check your authenticator app's current code and try again.";
+        mfaMsg.className = "error";
+        mfaSubmitBtn.disabled = false;
+        mfaSubmitBtn.textContent = "Verify";
+        return;
+      }
+
+      await goPostLogin(mfaPendingDefaultUrl || "/dashboard.html");
     });
   </script>
 </body>
