@@ -9,10 +9,10 @@
 //
 // IMPORTANT (security): real play content — diagrams, coaching notes — must
 // NEVER be fetched or rendered on these public pages. Only directory-safe
-// columns (title, play_type, phase_count, court_type, updated_at) come from
-// the `play_directory` view. Clicking any real play card always opens the
-// "ask your coach for an access link" modal; it never reveals content. Do
-// not change this behavior.
+// columns (title, play_type, phase_count, court_type, updated_at, and now
+// `id` -- see getPlaysForViewer) come from the `play_directory` view.
+// Clicking any real play card always opens the "you need a real login"
+// modal; it never reveals content. Do not change this behavior.
 
 (function (global) {
   "use strict";
@@ -250,13 +250,14 @@
     div.addEventListener("click", () => {
       // A logged-in, authorized coach gets opts.onOpen wired up by the page
       // (see getPlaysForViewer/makePlayOpener below) -- everyone else still
-      // gets the existing "ask your coach" modal, unchanged.
+      // gets the login modal, which now (Sep 15, 2026) remembers which play
+      // was clicked so login can drop the visitor straight back into it --
+      // see showAccessModal().
       if (opts.onOpen) {
         opts.onOpen(play);
         return;
       }
-      const modal = document.getElementById("access-modal");
-      if (modal) modal.style.display = "flex";
+      showAccessModal(play.id);
     });
     return div;
   }
@@ -272,15 +273,41 @@
     return div;
   }
 
+  // Shows the "you need a real login" modal, remembering which play was
+  // clicked (in sessionStorage, same-origin, cleared on use or on Cancel)
+  // so that /login.html or /player-login.html can drop the visitor
+  // straight back into THIS play once they've signed in, instead of just
+  // dumping them on their dashboard/home page -- added Sep 15, 2026 per
+  // Shaun's explicit ask. `playId` can be omitted (falls back to showing
+  // the modal with no pending play) for any caller that doesn't have one.
+  function showAccessModal(playId) {
+    if (playId) {
+      try {
+        sessionStorage.setItem("ct_pending_play_id", playId);
+      } catch (err) {
+        // Private-browsing/storage-blocked visitors just don't get the
+        // deep-link-back behavior -- the modal and its login links still
+        // work fine without it.
+      }
+    }
+    const modal = document.getElementById("access-modal");
+    if (modal) modal.style.display = "flex";
+  }
+
   function wireAccessModal() {
     const closeBtn = document.getElementById("access-modal-close");
     if (closeBtn) {
       closeBtn.addEventListener("click", () => {
+        // Cancelling means abandon intent -- don't let a stale pending play
+        // hijack some unrelated later login.
+        try {
+          sessionStorage.removeItem("ct_pending_play_id");
+        } catch (err) {}
         document.getElementById("access-modal").style.display = "none";
       });
     }
   }
- 
+
   // Coach-aware play list. Checks for an active Supabase Auth session; if
   // the visitor is a real, logged-in coach with a program_coaches row for
   // this program, reads the real `plays` table directly (RLS already
@@ -320,11 +347,24 @@
       return { plays: data || [], accessToken };
     }
  
-    const { data } = await supabase
+    // Include `id` here too (Sep 15, 2026) so an anonymous visitor's play
+    // card can remember which play they clicked and deep-link them straight
+    // back into it after they log in (see showAccessModal() below) -- a
+    // play's id isn't sensitive on its own, view-play.js still requires a
+    // real authorized session to ever see the actual content. Falls back to
+    // the id-less query if the live play_directory view doesn't expose id
+    // yet, so the directory itself never breaks either way.
+    const { data, error } = await supabase
+      .from("play_directory")
+      .select("id, " + viewColumns)
+      .eq("program_id", programId);
+    if (!error) return { plays: data || [], accessToken: null };
+
+    const { data: fallbackData } = await supabase
       .from("play_directory")
       .select(viewColumns)
       .eq("program_id", programId);
-    return { plays: data || [], accessToken: null };
+    return { plays: fallbackData || [], accessToken: null };
   }
  
   // Returns a click handler for playCard (and for a search result's
@@ -334,8 +374,7 @@
   function makePlayOpener(accessToken) {
     return async function openPlay(play) {
       if (!accessToken || !play.id) {
-        const modal = document.getElementById("access-modal");
-        if (modal) modal.style.display = "flex";
+        showAccessModal(play && play.id);
         return;
       }
       try {
