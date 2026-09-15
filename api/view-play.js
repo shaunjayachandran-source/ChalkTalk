@@ -1,5 +1,5 @@
 /**
- * GET /api/view-play?playId=<uuid>[&accessToken=<token>]
+ * GET /api/view-play?playId=<uuid>
  *
  * Streams a generated playbook's HTML back with headers that render it
  * inline (see the header comment history below for why), and now also:
@@ -11,7 +11,7 @@
  *     be traced back to whoever's account saw it. Tiled edge-to-edge
  *     (not a single corner mark) so cropping doesn't remove it.
  *
- * Three ways in, checked in order:
+ * Two ways in, checked in order:
  *   - A logged-in coach (Authorization: Bearer <session token>) viewing a
  *     play on their own program -- used right after create.html finishes
  *     a build.
@@ -19,11 +19,16 @@
  *     <session token>, added Sep 15, 2026 for the Dartmouth login pilot --
  *     see api/_lib/validate-viewer-session.js) viewing a published play on
  *     their linked program -- used from public/player-home.html.
- *   - A personal access-link token (?accessToken=<token>) viewing a
- *     published play -- same token model as api/team-access.js, used from
- *     my-playbook.html.
- * None of these checking out fails closed, same as every other
- * reader-facing endpoint in this app.
+ * Neither checking out fails closed, same as every other reader-facing
+ * endpoint in this app.
+ *
+ * REMOVED Sep 15, 2026: the tokenless personal-access-link auth path
+ * (?accessToken=<token> against api/team-access.js/access_links) --
+ * Shaun's explicit call that it wasn't secure and required no real login.
+ * api/team-access.js and public/my-playbook.html were deleted in the same
+ * change; the access_links table itself is dropped by a follow-up SQL
+ * script once this is confirmed live. Real access for players/parents now
+ * goes exclusively through the viewer-account login tier above.
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -36,12 +41,6 @@ function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
   return createClient(SUPABASE_URL, key);
-}
-
-async function sha256Hex(text) {
-  const data = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function fail(res, status, message) {
@@ -85,7 +84,6 @@ function getRequestMeta(req) {
 
 export default async function handler(req, res) {
   const playId = typeof req.query.playId === "string" ? req.query.playId.trim() : "";
-  const accessToken = typeof req.query.accessToken === "string" ? req.query.accessToken.trim() : "";
 
   if (!playId) return fail(res, 400, "Missing playId");
 
@@ -143,39 +141,6 @@ export default async function handler(req, res) {
       viewerRefId = viewerResult.viewerAccount.id;
       const role = viewerResult.teamMember?.role || "viewer";
       viewerLabel = viewerResult.teamMember?.name ? `${viewerResult.teamMember.name} (${role})` : `Unnamed ${role}`;
-    }
-  }
-
-  if (!authorized && accessToken) {
-    const tokenHash = await sha256Hex(accessToken);
-    const { data: link } = await service
-      .from("access_links")
-      .select("id, program_id, team_member_id, role, revoked_at, expires_at")
-      .eq("token_hash", tokenHash)
-      .maybeSingle();
-
-    if (
-      link &&
-      !link.revoked_at &&
-      (!link.expires_at || new Date(link.expires_at) > new Date()) &&
-      link.program_id === play.program_id &&
-      play.status === "published" &&
-      !play.hidden
-    ) {
-      authorized = true;
-      viewerKind = "access_link";
-      viewerRefId = link.id;
-
-      let memberName = null;
-      if (link.team_member_id) {
-        const { data: member } = await service
-          .from("team_members")
-          .select("name")
-          .eq("id", link.team_member_id)
-          .maybeSingle();
-        memberName = member ? member.name : null;
-      }
-      viewerLabel = memberName ? `${memberName} (${link.role})` : `Unnamed ${link.role}`;
     }
   }
 
