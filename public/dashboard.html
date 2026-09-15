@@ -386,15 +386,21 @@
           <option value="graduate_assistant">Graduate Assistant</option>
           <option value="dbo">DBO</option>
         </select>
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
-          <input type="checkbox" id="new-coach-can-publish" style="width:auto;" /> Can publish
-        </label>
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
-          <input type="checkbox" id="new-coach-can-hide" style="width:auto;" /> Can hide
-        </label>
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
-          <input type="checkbox" id="new-coach-can-delete" style="width:auto;" /> Can delete
-        </label>
+        <!-- Grouped into one flex unit (Sep 15, 2026 CSS fix) so the three
+             permission checkboxes wrap together as a block if the row runs
+             out of room, instead of "Can delete" splitting off alone onto
+             its own line while Publish/Hide stay up top. -->
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:nowrap; white-space:nowrap;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-publish" style="width:auto;" /> Can publish
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-hide" style="width:auto;" /> Can hide
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-delete" style="width:auto;" /> Can delete
+          </label>
+        </div>
         <button class="action" id="invite-coach-btn">Invite coach</button>
       </div>
       <div class="sub" style="margin-top:8px; margin-bottom:0;">Only the head coach can invite other coaches. This sends a real Supabase account invite by email -- they'll set their own password and get a dashboard login.</div>
