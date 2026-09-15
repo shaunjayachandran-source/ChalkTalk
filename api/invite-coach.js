@@ -14,11 +14,24 @@
  *
  *   1. validateCoachSession() confirms the caller has a real, current
  *      Supabase session AND that `programId` is visible to them under RLS.
- *   2. A second, stricter check confirms the caller is specifically
- *      head_coach on that program -- per the locked permission matrix,
- *      managing other coaches on a program is head_coach only. This is
- *      checked with the caller's own session-scoped client, so RLS (not
- *      application code) is still what actually gates the read.
+ *   2. A second, stricter check confirms the caller is is_program_admin()
+ *      on that program -- per the locked permission matrix, managing other
+ *      coaches on a program is head_coach (or ChalkTalk staff) only. This
+ *      calls the same is_program_admin() SECURITY DEFINER function the
+ *      program_coaches_admin_update RLS policy already uses, via RPC on
+ *      the caller's own session-scoped client -- so this endpoint and that
+ *      policy can never disagree about who's authorized.
+ *
+ *      FIXED Sep 15, 2026: this previously did a direct `program_coaches`
+ *      role==head_coach check, which meant ChalkTalk staff (is_chalktalk_staff())
+ *      could NOT invite/manage coaches on a program unless they also held a
+ *      real head_coach row there -- defeating the whole point of the staff/
+ *      master-login tier, and a real problem the moment a program is ever
+ *      left without a working head_coach (exactly what happened on
+ *      Dartmouth this session). Routing through is_program_admin() instead
+ *      means staff can always manage any program's coaches, matching the
+ *      "master overwrite" behavior the master-login feature was meant to
+ *      provide everywhere, not just in the dashboard's client-side gating.
  *
  * Only after both checks pass does this switch to the service-role client,
  * narrowly to invite the new user and write their `coaches` +
@@ -68,17 +81,20 @@ export default async function handler(req, res) {
     return sendJson(res, session.status, { error: session.error });
   }
 
-  // Step 2: confirm the caller is head_coach on this specific program,
-  // using their own session-scoped client so RLS enforces the read.
-  const { data: callerRow, error: callerErr } = await session.supabase
-    .from("program_coaches")
-    .select("role")
-    .eq("program_id", programId)
-    .eq("coach_id", session.user.id)
-    .maybeSingle();
+  // Step 2: confirm the caller is head_coach OR ChalkTalk staff on this
+  // specific program, via the same is_program_admin() function the
+  // program_coaches_admin_update RLS policy already trusts -- see the
+  // header comment above for why this replaced a direct program_coaches
+  // role check.
+  const { data: isAdmin, error: adminErr } = await session.supabase.rpc(
+    "is_program_admin",
+    { p_program_id: programId }
+  );
 
-  if (callerErr || !callerRow || callerRow.role !== "head_coach") {
-    return sendJson(res, 403, { error: "Only the head coach can invite other coaches onto this program" });
+  if (adminErr || !isAdmin) {
+    return sendJson(res, 403, {
+      error: "Only the head coach (or ChalkTalk staff) can invite other coaches onto this program",
+    });
   }
 
   let serviceClient;
