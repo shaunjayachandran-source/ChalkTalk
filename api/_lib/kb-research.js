@@ -93,18 +93,50 @@ export function extractJsonBlock(text) {
   }
 }
 
-// Pulls every citation Anthropic itself attached to the response's text
-// blocks. These come from the tool's own search results -- the model
-// cannot inject an arbitrary URL into this array, which is exactly why it's
-// the ground truth we check self-reported sources against, not the other
-// way around.
+// FIXED Sep 16, 2026 -- real production incident. This originally only read
+// block.citations off "text" content blocks, on the assumption the model
+// would issue a single top-level web_search tool call and Anthropic would
+// auto-attach a citations array to the final answer text (the "search and
+// cite" flow). That assumption was wrong for what MODEL actually does here:
+// confirmed via a raw-content diagnostic dump (added Sep 16, 2026, see
+// api/research-knowledge.js) that claude-sonnet-4-6 instead runs its
+// searches THROUGH the code_execution tool -- it writes Python that calls
+// web_search(...) as a callable inside the sandbox (often several in
+// parallel via asyncio.gather), reads the raw results itself, and then
+// free-writes its answer text from what it read. Anthropic does not
+// auto-populate a citations array on that free-written text -- that
+// auto-tagging only exists for the direct, single-call web_search flow --
+// so extractRealCitations() found the citations field empty on literally
+// every real invocation since this went live (100% failure rate, confirmed
+// via kb_research_runs.citations across many distinct topics), regardless
+// of how well-sourced the model's actual research was.
+//
+// The real, tool-verified URLs were there all along, just one level down:
+// every search (whether called directly or from inside code_execution)
+// still produces its own `web_search_tool_result` content block, and THAT
+// block's `content[]` array holds the actual results the tool returned --
+// {type: "web_search_result", url, title, ...} -- independent of whether
+// the model's own prose ever cites them inline. That is the real ground
+// truth (Anthropic populates it, not the model), so this now reads from
+// both places: a text block's citations (kept for the direct-call flow,
+// should Anthropic ever route this model through it) AND every
+// web_search_tool_result block's content array (the actual fix, covers the
+// code_execution-mediated flow this model uses in practice).
 export function extractRealCitations(contentBlocks) {
   const seen = new Map(); // url -> {url, title}
   for (const block of contentBlocks || []) {
-    if (block.type !== "text" || !Array.isArray(block.citations)) continue;
-    for (const c of block.citations) {
-      if (c.type === "web_search_result_location" && c.url) {
-        seen.set(c.url, { url: c.url, title: c.title || null });
+    if (block.type === "text" && Array.isArray(block.citations)) {
+      for (const c of block.citations) {
+        if (c.type === "web_search_result_location" && c.url) {
+          seen.set(c.url, { url: c.url, title: c.title || null });
+        }
+      }
+    }
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const item of block.content) {
+        if (item.type === "web_search_result" && item.url) {
+          seen.set(item.url, { url: item.url, title: item.title || null });
+        }
       }
     }
   }
