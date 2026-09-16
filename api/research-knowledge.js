@@ -293,6 +293,64 @@ async function processQueueRow(supabase, row) {
 const RUN_TIME_BUDGET_MS = 260_000; // leaves ~40s of the 300s ceiling as buffer
 const STALE_RUNNING_MS = 15 * 60 * 1000; // no real research call should ever take this long
 
+// REVIEW-QUEUE NOTIFICATION (added Sep 16, 2026 -- see
+// claude/chalktalk-part2-rebuild-status.md, "KB Review Queue" section).
+// Before this, the only way to find out a topic needed a human look was to
+// go query kb_research_runs by hand. Now that /kb-review.html exists as a
+// live page (backed by api/kb-review-queue.js), this sends Shaun a short
+// email whenever a run actually produces something worth his attention --
+// same Resend HTTP API already used by notify-team-member.js, since
+// Supabase's own SMTP config isn't reachable from our Vercel functions.
+//
+// Deliberately best-effort and scoped to THIS run's results only (not a
+// full re-query of the whole queue) -- a notification failure must never
+// fail the cron run itself, and this should feel like "here's what just
+// happened," not a duplicate of the always-current review page.
+const RESEND_FROM = "ChalkTalk <notifications@notifications.crossover-india.org>";
+const REVIEW_PAGE_URL = "https://chalktalk-sand.vercel.app/kb-review.html";
+
+async function notifyIfReviewNeeded(results) {
+  const flagged = results.filter((r) => r.outcome === "needs_review" || r.outcome === "insufficient_evidence");
+  if (flagged.length === 0) return;
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.ADMIN_NOTIFY_EMAIL;
+  if (!apiKey || !to) {
+    console.log(
+      `[research-knowledge] ${flagged.length} topic(s) need review this run, but RESEND_API_KEY and/or ADMIN_NOTIFY_EMAIL is not set -- skipping email (set both in Vercel to enable)`
+    );
+    return;
+  }
+
+  const itemsHtml = flagged
+    .map((r) => `<li><strong>${r.topic}</strong> &mdash; ${r.outcome.replace(/_/g, " ")}: ${r.notes}</li>`)
+    .join("");
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to,
+        subject: `ChalkTalk KB: ${flagged.length} topic${flagged.length === 1 ? "" : "s"} need${flagged.length === 1 ? "s" : ""} review`,
+        html: `
+          <p>This cron run flagged ${flagged.length} topic${flagged.length === 1 ? "" : "s"} that couldn't auto-merge:</p>
+          <ul>${itemsHtml}</ul>
+          <p><a href="${REVIEW_PAGE_URL}">Open the review queue &rarr;</a></p>
+        `,
+      }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Resend ${resp.status}: ${body || resp.statusText}`);
+    }
+    console.log(`[research-knowledge] sent review-needed email for ${flagged.length} topic(s)`);
+  } catch (err) {
+    console.log(`[research-knowledge] review-needed email failed (non-fatal): ${err.message}`);
+  }
+}
+
 export default async function handler(req, res) {
   const authHeader = req.headers["authorization"];
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -355,6 +413,8 @@ export default async function handler(req, res) {
       .eq("id", row.id);
     results.push(await processQueueRow(supabase, row));
   }
+
+  await notifyIfReviewNeeded(results);
 
   res.status(200).json({
     processed: results.length,
