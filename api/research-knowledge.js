@@ -51,7 +51,24 @@ import { getSupabase, slugify, isStale, enqueueResearchTopic } from "./_lib/know
 // unchanged; this is a relocation, not a rewrite.
 import { researchTopic, verifyCitations, buildKbEntryUpsertPayload } from "./_lib/kb-research.js";
 
-const MAX_TOPICS_PER_RUN = 5; // keep each cron invocation well under Vercel's function timeout
+// LOWERED 1 <- 5 (Sep 16, 2026) -- a real production incident showed the
+// RUN_TIME_BUDGET_MS pre-check below is NOT enough on its own: it only gates
+// whether to *start* the next topic, not whether an *in-flight* call should
+// be aborted. Two sequential slow calls (observed: 165.72s then 131.38s+)
+// can still sum past Vercel's 300s hard ceiling even though each one looked
+// safe to start on its own. Rather than try to tune the budget number, cap
+// at one topic per invocation and hard-timeout that single call (see
+// RESEARCH_CALL_TIMEOUT_MS below) -- the cron runs every 6 hours regardless,
+// so draining the queue one topic per tick is a fine trade for never timing
+// out silently again.
+const MAX_TOPICS_PER_RUN = 1;
+// Hard per-call ceiling passed to researchTopic()'s existing timeoutMs
+// option (api/_lib/kb-research.js already implements this via
+// AbortController -- the cron worker just never used it before now). Set
+// comfortably under RUN_TIME_BUDGET_MS so a single call that hits this
+// timeout still leaves room to log the outcome and return cleanly instead
+// of getting killed externally by Vercel with nothing recorded at all.
+const RESEARCH_CALL_TIMEOUT_MS = 240_000;
 const QUEUE_FETCH_MAX_ATTEMPTS = 3; // 1 initial try + 2 retries
 const QUEUE_FETCH_RETRY_DELAY_MS = 750;
 
@@ -164,7 +181,9 @@ async function processQueueRow(supabase, row) {
   let modelOutput = null;
 
   try {
-    const { parsed, realCitations, searchCallCount, rawContent } = await researchTopic(row.topic);
+    const { parsed, realCitations, searchCallCount, rawContent } = await researchTopic(row.topic, {
+      timeoutMs: RESEARCH_CALL_TIMEOUT_MS,
+    });
     citationsForLog = realCitations;
     modelOutput = parsed;
 
