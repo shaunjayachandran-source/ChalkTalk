@@ -164,9 +164,25 @@ async function processQueueRow(supabase, row) {
   let modelOutput = null;
 
   try {
-    const { parsed, realCitations, searchCallCount } = await researchTopic(row.topic);
+    const { parsed, realCitations, searchCallCount, rawContent } = await researchTopic(row.topic);
     citationsForLog = realCitations;
     modelOutput = parsed;
+
+    // TEMPORARY DIAGNOSTIC (added Sep 16, 2026) -- extractRealCitations()
+    // has returned an empty array on every single run since this cron went
+    // live Sep 15, 2026 (confirmed via kb_research_runs.citations across 5
+    // separate topics), which fails every citation gate regardless of how
+    // well-sourced the model's actual research was. Rather than guess at
+    // why, dump the raw content blocks Anthropic actually returned so the
+    // real shape can be inspected directly in Vercel's runtime logs. Remove
+    // this block once extractRealCitations() is confirmed fixed against the
+    // real shape -- it's verbose by design, not meant to stay.
+    if (realCitations.length === 0) {
+      console.log(
+        `[research-knowledge] DIAGNOSTIC raw content for "${row.topic}" (citations extraction returned empty):`,
+        JSON.stringify(rawContent).slice(0, 8000)
+      );
+    }
 
     if (searchCallCount === 0) {
       outcome = "error";
