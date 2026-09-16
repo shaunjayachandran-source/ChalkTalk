@@ -253,6 +253,27 @@ async function processQueueRow(supabase, row) {
   return { topic: row.topic, outcome, notes };
 }
 
+// FIXED Sep 16, 2026 -- real production incident: this function was
+// observed hitting Vercel's 300s hard ceiling (each research call can take
+// 100-150+ seconds) while working through a batch of claimed topics. The
+// old code marked ALL claimed rows as `running` up front, then processed
+// them one at a time in a loop -- so when the timeout killed the function
+// mid-loop, whichever rows the loop hadn't reached yet were left stuck at
+// `running` forever, since fetchPendingTopics() only ever selects
+// `status = 'pending'`. An orphaned `running` row was permanently invisible
+// to every future cron tick, not just delayed.
+//
+// Two independent fixes below: (1) self-heal any `running` row that's been
+// claimed for longer than a real research call should ever take -- resets
+// it back to `pending` so a killed run's leftovers get picked up next time
+// instead of vanishing. (2) claim-and-process one row at a time, checking
+// a real elapsed-time budget before claiming each one -- a row is only
+// ever marked `running` immediately before it's actually processed, so a
+// row this invocation doesn't get to simply stays `pending`, no orphaning
+// possible.
+const RUN_TIME_BUDGET_MS = 260_000; // leaves ~40s of the 300s ceiling as buffer
+const STALE_RUNNING_MS = 15 * 60 * 1000; // no real research call should ever take this long
+
 export default async function handler(req, res) {
   const authHeader = req.headers["authorization"];
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -260,7 +281,22 @@ export default async function handler(req, res) {
     return;
   }
 
+  const startTime = Date.now();
   const supabase = getSupabase();
+
+  // Self-heal orphaned rows from a previous run that got killed mid-batch
+  // before it could mark them done/failed -- see the fix note above.
+  const { data: healedRows, error: healErr } = await supabase
+    .from("kb_research_queue")
+    .update({ status: "pending", claimed_at: null })
+    .eq("status", "running")
+    .lt("claimed_at", new Date(Date.now() - STALE_RUNNING_MS).toISOString())
+    .select("id");
+  if (healErr) {
+    console.log(`[research-knowledge] orphaned-row self-heal check failed (non-fatal): ${healErr.message}`);
+  } else if (healedRows && healedRows.length > 0) {
+    console.log(`[research-knowledge] self-healed ${healedRows.length} orphaned 'running' row(s) back to 'pending'`);
+  }
 
   // Proactive step, runs before the normal drain below: top up the queue
   // with anything stale so the KB refreshes itself on this same 6-hour
@@ -282,16 +318,29 @@ export default async function handler(req, res) {
     return;
   }
 
-  const claimedIds = pending.map((r) => r.id);
-  await supabase
-    .from("kb_research_queue")
-    .update({ status: "running", claimed_at: new Date().toISOString() })
-    .in("id", claimedIds);
-
   const results = [];
+  let stoppedEarly = false;
   for (const row of pending) {
+    if (Date.now() - startTime > RUN_TIME_BUDGET_MS) {
+      stoppedEarly = true;
+      console.log(
+        `[research-knowledge] time budget reached -- stopping with ${pending.length - results.length} topic(s) left untouched (still 'pending', picked up next run)`
+      );
+      break;
+    }
+    // Claim immediately before processing, not in a batch up front -- a row
+    // we never reach in this invocation is simply never marked 'running'.
+    await supabase
+      .from("kb_research_queue")
+      .update({ status: "running", claimed_at: new Date().toISOString() })
+      .eq("id", row.id);
     results.push(await processQueueRow(supabase, row));
   }
 
-  res.status(200).json({ processed: results.length, results, staleness_sweep: sweepResult });
+  res.status(200).json({
+    processed: results.length,
+    results,
+    stopped_early_on_time_budget: stoppedEarly,
+    staleness_sweep: sweepResult,
+  });
 }
