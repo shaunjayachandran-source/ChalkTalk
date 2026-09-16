@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChalkTalk Admin &mdash; KB Review Queue</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  :root{
+    --bg:#0d1017; --card:#161c27; --line:#232b38; --gold:#f0b429;
+    --text:#eef1f6; --dim:#8b93a3; --teal:#1abc9c; --danger:#ff5a3c;
+    --ok:#27ae60; --ok-dim:#12281c; --link:#7db3ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;padding:24px 16px 60px;}
+  h1{font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:.02em;margin-bottom:4px;}
+  .sub{font-family:'DM Mono',monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:20px;}
+  .wrap{max-width:720px;margin:0 auto;}
+  #gate{max-width:360px;margin:80px auto;text-align:center;}
+  #gate input{width:100%;padding:10px 12px;background:#0f131c;border:1px solid var(--line);border-radius:6px;color:var(--text);margin-bottom:12px;}
+  button{padding:11px 18px;border:none;border-radius:6px;background:var(--gold);color:#0d1017;font-weight:700;font-size:.88rem;cursor:pointer;}
+  .stats{display:flex;gap:10px;margin:18px 0 22px;flex-wrap:wrap;}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;flex:1;min-width:110px;}
+  .stat .n{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--gold);line-height:1;}
+  .stat .l{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;}
+  .card.done{opacity:.5;}
+  .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .topic{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.01em;line-height:1.1;}
+  .pill{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 9px;border-radius:100px;white-space:nowrap;border:1px solid transparent;}
+  .pill.needs_review{background:rgba(255,90,60,.12);color:var(--danger);border-color:rgba(255,90,60,.35);}
+  .pill.insufficient_evidence{background:#1b212c;color:var(--dim);border-color:var(--line);}
+  .pill.done{background:var(--ok-dim);color:var(--ok);border-color:#1e4430;}
+  .note{font-size:13px;line-height:1.55;margin-top:10px;opacity:.9;}
+  .meta{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:8px;}
+  .sources{margin-top:12px;}
+  .sources-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+  .src{display:block;padding:8px 11px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;text-decoration:none;color:var(--text);}
+  .src:hover{border-color:var(--gold);}
+  .src .t{font-size:12.5px;font-weight:600;}
+  .src .u{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--link);margin-top:2px;word-break:break-all;}
+  .src .q{font-size:11.5px;color:var(--dim);margin-top:4px;font-style:italic;line-height:1.4;}
+  .empty{color:var(--dim);font-size:.9rem;padding:30px 0;text-align:center;}
+  .refresh{margin-bottom:16px;}
+  .refresh button{background:transparent;border:1px solid var(--line);color:var(--text);}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>ChalkTalk Admin</h1>
+  <div class="sub">Enter admin token to continue</div>
+  <input type="text" id="tokenInput" placeholder="Admin token">
+  <button id="unlockBtn" style="width:100%;">Unlock</button>
+  <div id="gateMsg"></div>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="wrap">
+    <h1>KB Review Queue</h1>
+    <div class="sub">Topics the auto-research cron couldn't clear on its own &middot; live from kb_research_runs</div>
+
+    <div class="stats" id="stats"></div>
+    <div class="refresh"><button id="refreshBtn">Refresh</button></div>
+    <div id="list" class="empty">Loading&hellip;</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var TOKEN_KEY = 'chalktalk_admin_token';
+  function getToken(){ return sessionStorage.getItem(TOKEN_KEY) || ''; }
+  function setToken(t){ sessionStorage.setItem(TOKEN_KEY, t); }
+
+  function apiCall(path, options){
+    options = options || {};
+    options.headers = Object.assign({
+      'Authorization': 'Bearer ' + getToken(),
+      'Content-Type': 'application/json',
+    }, options.headers || {});
+    return fetch(path, options).then(function(res){
+      return res.json().then(function(body){
+        if(!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+        return body;
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function showApp(){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadQueue();
+  }
+
+  function tryUnlock(token){
+    setToken(token);
+    apiCall('/api/kb-review-queue').then(function(){
+      showApp();
+    }).catch(function(err){
+      document.getElementById('gateMsg').innerHTML = '<div style="color:var(--danger);margin-top:8px;">' + escapeHtml(err.message) + '</div>';
+      sessionStorage.removeItem(TOKEN_KEY);
+    });
+  }
+
+  document.getElementById('unlockBtn').addEventListener('click', function(){
+    var t = document.getElementById('tokenInput').value.trim();
+    if(!t) return;
+    tryUnlock(t);
+  });
+  if(getToken()){ tryUnlock(getToken()); }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadQueue);
+
+  function renderStats(pending){
+    var needsReview = pending.filter(function(p){ return p.outcome === 'needs_review' && !p.alreadyInKb; }).length;
+    var insufficient = pending.filter(function(p){ return p.outcome === 'insufficient_evidence' && !p.alreadyInKb; }).length;
+    var resolved = pending.filter(function(p){ return p.alreadyInKb; }).length;
+    document.getElementById('stats').innerHTML =
+      '<div class="stat"><div class="n">' + needsReview + '</div><div class="l">Needs review</div></div>' +
+      '<div class="stat"><div class="n">' + insufficient + '</div><div class="l">Insufficient evidence</div></div>' +
+      '<div class="stat"><div class="n">' + resolved + '</div><div class="l">Already added</div></div>';
+  }
+
+  function sourceRow(s){
+    if(!s || !s.url) return '';
+    return '<a class="src" href="' + encodeURI(s.url) + '" target="_blank" rel="noopener">' +
+      (s.title ? '<div class="t">' + escapeHtml(s.title) + '</div>' : '') +
+      '<div class="u">' + escapeHtml(s.url) + '</div>' +
+      (s.cited_text ? '<div class="q">&ldquo;' + escapeHtml(s.cited_text) + '&rdquo;</div>' : '') +
+    '</a>';
+  }
+
+  function renderCard(p){
+    var pillClass = p.alreadyInKb ? 'done' : p.outcome;
+    var pillLabel = p.alreadyInKb ? 'already added' : p.outcome.replace(/_/g, ' ');
+    var sourcesHtml = (p.sources || []).map(sourceRow).join('');
+    return '<div class="card' + (p.alreadyInKb ? ' done' : '') + '">' +
+      '<div class="card-head">' +
+        '<div class="topic">' + escapeHtml(p.topic || p.systemName || 'Unknown topic') + '</div>' +
+        '<div class="pill ' + pillClass + '">' + escapeHtml(pillLabel) + '</div>' +
+      '</div>' +
+      '<div class="note">' + escapeHtml(p.notes || '') + '</div>' +
+      '<div class="meta">' + new Date(p.createdAt).toLocaleString() + (p.requestedBy ? ' &middot; requested by ' + escapeHtml(p.requestedBy) : '') + '</div>' +
+      (sourcesHtml ? '<div class="sources"><div class="sources-label">Sources the model reported</div>' + sourcesHtml + '</div>' : '') +
+    '</div>';
+  }
+
+  function loadQueue(){
+    var list = document.getElementById('list');
+    list.innerHTML = 'Loading&hellip;';
+    apiCall('/api/kb-review-queue').then(function(result){
+      var pending = result.pending || [];
+      renderStats(pending);
+      var open = pending.filter(function(p){ return !p.alreadyInKb; });
+      var resolved = pending.filter(function(p){ return p.alreadyInKb; });
+      if(!pending.length){
+        list.innerHTML = '<div class="empty">Nothing pending right now &mdash; the review queue is clear.</div>';
+        return;
+      }
+      list.innerHTML = open.map(renderCard).join('') + resolved.map(renderCard).join('');
+    }).catch(function(err){
+      list.innerHTML = '<div style="color:var(--danger);">' + escapeHtml(err.message) + '</div>';
+    });
+  }
+})();
+</script>
+</body>
+</html>
