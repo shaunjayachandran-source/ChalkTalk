@@ -1,0 +1,22 @@
+{
+  "slug": "team-melo-2034",
+  "file_prefix": "team-melo-2034",
+  "title": "Team Melo 2034",
+  "team_name": "TEAM MELO 2034",
+  "team_sub": "2034 Girls AAU",
+  "hero_line": "undefined",
+  "sign_accent": "BALTIMORE, MD",
+  "coach_line": "Head Coach: <b>Charles Franz</b>",
+  "coach_name": "Charles Franz",
+  "coach_email": "cfranz1980@gmail.com",
+  "crest_html": "<span>MELO</span>",
+  "accent_glow": "rgba(195,9,19,0.35)",
+  "accent_crest": "linear-gradient(160deg,#c30913,#870000)",
+  "color_primary": "#c30913",
+  "color_secondary": "#870000",
+  "crest_label": "MELO",
+  "notes_text": "No plays have been built yet for this program. Pick a section below, or search above &mdash; each card fills in once this staff runs a play through <b>Intake Mode</b> (spoken description, uploaded diagram, or typed notes).",
+  "hero_mode": "art",
+  "tagline": "Team Melo 2034",
+  "beta_status": "beta"
+}
