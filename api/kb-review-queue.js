@@ -16,6 +16,26 @@
  * what the model claims it used (with titles/quotes), `citations` is the
  * ground truth of what the search tool actually returned this run.
  *
+ * UPDATED Sep 17, 2026 (in-page approve/reject build, see
+ * claude/chalktalk-part2-rebuild-status.md): now also returns `queueId` and
+ * the rest of the model's structured output (aliases, formation, summary,
+ * structure, coachingLevel) so /kb-review.html can render an editable
+ * approve form instead of Shaun having to describe curation decisions in
+ * chat for a Claude-written SQL script. See api/kb-review-approve.js for
+ * the write side.
+ *
+ * Requires two new nullable columns on kb_research_queue, added via
+ * SQL--add-kb-review-admin-columns.sql (small additive ALTER TABLE, must be
+ * run once before this endpoint/the approve endpoint work):
+ *   admin_action text check (admin_action in ('approved','dismissed'))
+ *   admin_reviewed_at timestamptz
+ * status='done' alone isn't enough to tell "the cron finished this run and
+ * it needs a human look" apart from "a human already looked and dismissed
+ * it" -- research-knowledge.js sets status='done' for BOTH a successful
+ * merge and a needs_review/insufficient_evidence outcome (only a hard
+ * 'error' gets 'failed'). admin_action is the real, separate signal for
+ * whether a human has acted on this row yet.
+ *
  * Deliberately does NOT try to hide rows that have already been resolved by
  * a manual kb_entries insert (see SQL--add-coach-curated-kb-entries.sql) --
  * kb_research_runs has no "resolved" flag, and adding one is a real schema
@@ -57,7 +77,7 @@ export default async function handler(req, res) {
     if (queueIds.length > 0) {
       const { data: queueRows, error: queueError } = await supabase
         .from("kb_research_queue")
-        .select("id, topic, normalized_slug, reason, requested_by, created_at")
+        .select("id, topic, normalized_slug, reason, requested_by, status, admin_action, admin_reviewed_at, created_at")
         .in("id", queueIds);
       if (queueError) throw queueError;
       queueById = Object.fromEntries((queueRows || []).map((q) => [q.id, q]));
@@ -73,24 +93,35 @@ export default async function handler(req, res) {
       const slug = queue ? queue.normalized_slug : run.id;
       if (seenSlugs.has(slug)) continue;
       seenSlugs.add(slug);
+      const mo = run.model_output || {};
       deduped.push({
         runId: run.id,
+        queueId: run.queue_id || null,
         outcome: run.outcome,
         notes: run.notes,
         citations: run.citations || [],
-        sources: (run.model_output && run.model_output.sources) || [],
-        systemName: run.model_output && run.model_output.system_name,
+        sources: mo.sources || [],
+        systemName: mo.system_name || null,
+        category: mo.category || null,
+        formation: mo.formation || null,
+        aliases: mo.aliases || [],
+        summary: mo.summary || "",
+        structure: mo.structure || {},
+        coachingLevel: mo.coaching_level || null,
         createdAt: run.created_at,
         topic: queue ? queue.topic : null,
+        normalizedSlug: queue ? queue.normalized_slug : null,
         reason: queue ? queue.reason : null,
         requestedBy: queue ? queue.requested_by : null,
+        adminAction: queue ? queue.admin_action : null,
+        adminReviewedAt: queue ? queue.admin_reviewed_at : null,
       });
     }
 
     // Cross-reference against kb_entries so the page can show "already
-    // added" for anything a manual SQL pass (or a later successful
-    // auto-merge) has already resolved, instead of showing it as still
-    // pending forever.
+    // added" for anything a manual SQL pass, the new approve endpoint, or a
+    // later successful auto-merge has already resolved, instead of showing
+    // it as still pending forever.
     const { data: entries, error: entriesError } = await supabase
       .from("kb_entries")
       .select("slug, system_name, confidence, last_verified_at");
@@ -98,9 +129,9 @@ export default async function handler(req, res) {
     const entryBySlug = Object.fromEntries((entries || []).map((e) => [e.slug, e]));
 
     for (const row of deduped) {
-      const q = Object.values(queueById).find((qq) => qq.topic === row.topic);
-      const slug = q ? q.normalized_slug : null;
+      const slug = row.normalizedSlug;
       row.alreadyInKb = slug ? Boolean(entryBySlug[slug]) : false;
+      row.dismissed = row.adminAction === "dismissed";
     }
 
     return sendJson(res, 200, { ok: true, pending: deduped });
