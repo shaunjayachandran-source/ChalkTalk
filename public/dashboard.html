@@ -1,1 +1,1392 @@
-&lt;!doctype html&gt;
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkTalk — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d1017;
+    --gold: #f0b429;
+    --text: #e8e6e0;
+    --muted: #8b93a1;
+    --card: #151a24;
+    --border: #262d3a;
+    --green: #27ae60;
+    --red: #ff7b6e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    color: var(--gold);
+    font-size: 26px;
+    margin: 0;
+    letter-spacing: 1px;
+  }
+  header button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.5px;
+    font-size: 20px;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  .card .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 11px;
+  }
+  .pill.head_coach { background: rgba(123,179,255,.18); color: #7db3ff; }
+  .pill.assistant_coach { background: rgba(154,140,255,.18); color: #b8a9ff; }
+  .pill.graduate_assistant { background: rgba(26,188,156,.18); color: #1abc9c; }
+  .pill.dbo { background: rgba(240,180,41,.18); color: var(--gold); }
+  .pill.athlete { background: rgba(39,174,96,.18); color: var(--green); }
+  .pill.parent { background: rgba(255,180,120,.18); color: #ffb478; }
+  .pill.revoked { background: rgba(255,123,110,.18); color: var(--red); }
+  .pill.active { background: rgba(39,174,96,.18); color: var(--green); }
+  button.action {
+    background: var(--gold);
+    color: #0d1017;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+  }
+  button.action.danger { background: var(--red); }
+  button.action.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  #mfa-msg.error { color: var(--red); }
+  .add-form { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .add-form input, .add-form select {
+    background: #0d1017;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+  }
+  #empty-state, #loading { color: var(--muted); font-size: 13px; padding: 20px 0; }
+  select#program-select {
+    background: #0d1017;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  /* Program watermark: a low-opacity, rotated step-and-repeat of the
+     selected program's initials behind the whole dashboard. Purely
+     decorative (aria-hidden, pointer-events:none) -- never intercepts
+     clicks or gets read by screen readers. */
+  #watermark {
+    position: fixed;
+    inset: -25% -10%;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    transform: rotate(-18deg);
+    opacity: 0.05;
+  }
+  #watermark span {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 58px;
+    color: var(--gold);
+    white-space: nowrap;
+    padding: 26px 42px;
+    letter-spacing: 2px;
+  }
+  header, main { position: relative; z-index: 1; }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .link-btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .link-btn.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+  }
+  .team-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .team-toolbar button.action.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  #csv-summary {
+    display: none;
+    background: rgba(39,174,96,.1);
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 14px;
+    font-size: 12px;
+  }
+  #csv-summary.error { background: rgba(255,123,110,.1); border-color: var(--red); }
+
+  /* ---- Program Branding card ---- */
+  .branding-grid { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .crest-preview-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; width: 90px; }
+  .crest-preview {
+    width: 64px; height: 64px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; letter-spacing: 1px; color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,.4);
+    background: linear-gradient(160deg, #f0b429, #8a6a10);
+    border: 2px solid rgba(255,255,255,.15);
+  }
+  .branding-fields { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 4px; }
+  .branding-fields label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 10px; }
+  .branding-fields label:first-child { margin-top: 0; }
+  .branding-fields input[type="text"] {
+    background: #0d1017; border: 1px solid var(--border); color: var(--text);
+    padding: 7px 10px; border-radius: 6px; font-family: 'DM Mono', monospace; font-size: 13px; width: 100%;
+  }
+  .branding-fields input[type="color"] {
+    width: 100%; height: 34px; padding: 2px; background: #0d1017; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .field-hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .color-row { display: flex; gap: 14px; }
+  .color-row > div { flex: 1; }
+  .checkbox-label { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: normal; font-size: 12px; color: var(--text); cursor: pointer; }
+  .checkbox-label input { margin: 0; }
+  #brand-hero-thumb { display: none; max-width: 160px; max-height: 90px; border-radius: 6px; border: 1px solid var(--border); margin-top: 8px; object-fit: cover; }
+  .commons-search { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .commons-search .search-row { display: flex; gap: 8px; }
+  .commons-search .search-row input { flex: 1; }
+  .commons-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .commons-result {
+    cursor: pointer; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+    background: #0d1017; position: relative; aspect-ratio: 1 / 1;
+  }
+  .commons-result img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .commons-result:hover { border-color: var(--gold); }
+  .commons-status { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  #brand-save-status { color: var(--green); opacity: 0; transition: opacity 0.4s; }
+  #brand-save-status.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="watermark" aria-hidden="true"></div>
+<header>
+  <h1>ChalkTalk</h1>
+  <button id="logout-btn">Log out</button>
+</header>
+
+<main>
+  <div id="loading">Loading your programs...</div>
+  <div id="content" style="display:none;">
+    <!-- Account-level, not per-program (Sep 15, 2026) -- 2FA protects your
+         login itself, same as any other account, so it sits above the
+         program selector rather than inside a specific program's cards. -->
+    <div class="card" id="security-card">
+      <h2>Security</h2>
+      <div class="sub">Optional two-factor authentication for your ChalkTalk login. Not required, but recommended -- especially for a head coach or anyone with publish/delete access.</div>
+      <div id="mfa-status">Loading...</div>
+      <div id="mfa-enroll-panel" style="display:none; margin-top:14px;">
+        <div id="mfa-qr-wrap" style="margin-bottom:10px;"></div>
+        <div class="field-hint" id="mfa-secret-hint"></div>
+        <div class="add-form" style="margin-top:10px;">
+          <input type="text" id="mfa-verify-code" placeholder="6-digit code" maxlength="6" style="max-width:140px;" autocomplete="one-time-code" />
+          <button class="action" id="mfa-verify-btn">Confirm</button>
+          <button class="action secondary" id="mfa-cancel-btn">Cancel</button>
+        </div>
+      </div>
+      <div id="mfa-msg" style="margin-top:8px; font-size:12px;"></div>
+    </div>
+
+    <!-- Master-login / staff view (Sep 15, 2026): only ever shown to an
+         account granted staff access via the staff_accounts table (see
+         SQL--master-login-staff.sql) -- a normal coach never sees this,
+         and this account never appears as a roster/coach row on any real
+         program. Purely informational; the actual "can see/manage every
+         program" behavior is enforced server-side by is_chalktalk_staff()
+         via RLS and coach_has_permission(), not by this banner. -->
+    <div class="card" id="staff-banner" style="display:none; border-color:var(--gold);">
+      <div class="sub" style="color:var(--gold);">Staff view: you can see and manage every program for support/troubleshooting. This access is a temporary, expiring grant reviewed by Shaun -- not a normal coaching role.</div>
+    </div>
+
+    <label style="color:var(--muted); font-size:12px; display:block; margin-bottom:6px;">Program</label>
+    <select id="program-select"></select>
+
+    <div class="card">
+      <h2>Program Branding</h2>
+      <div class="sub">Crest, colors, coach line, and hero photo shown on this program's public team page.</div>
+      <div class="branding-grid">
+        <div class="crest-preview-wrap">
+          <div class="crest-preview" id="brand-crest-preview">?</div>
+          <div class="field-hint" style="margin:0; text-align:center;">Live preview</div>
+        </div>
+        <div class="branding-fields">
+          <label for="brand-crest-label">Crest label override</label>
+          <input type="text" id="brand-crest-label" placeholder="e.g. RPCS" maxlength="5" />
+          <div class="field-hint" id="brand-crest-fallback-hint"></div>
+
+          <div class="color-row">
+            <div>
+              <label for="brand-color-primary">Primary color</label>
+              <input type="color" id="brand-color-primary" value="#f0b429" />
+            </div>
+            <div>
+              <label for="brand-color-secondary">Secondary color</label>
+              <input type="color" id="brand-color-secondary" value="#8a6a10" />
+            </div>
+          </div>
+
+          <label for="brand-coach-name">Coach name</label>
+          <input type="text" id="brand-coach-name" placeholder="Coach's full name" />
+          <label class="checkbox-label" style="margin-top:8px;">
+            <input type="checkbox" id="brand-coach-name-public" />
+            Show coach name publicly
+          </label>
+
+          <label for="brand-hero-photo-url">Hero photo URL</label>
+          <input type="text" id="brand-hero-photo-url" placeholder="https://..." />
+          <img id="brand-hero-thumb" alt="Hero photo preview" />
+
+          <label for="brand-photo-credit-label">Photo credit label</label>
+          <input type="text" id="brand-photo-credit-label" placeholder="Photo: Jane Doe, CC BY-SA 4.0" />
+
+          <label for="brand-photo-credit-url">Photo credit URL</label>
+          <input type="text" id="brand-photo-credit-url" placeholder="https://commons.wikimedia.org/wiki/File:..." />
+
+          <div class="commons-search">
+            <label style="margin-top:0;">Search Wikimedia Commons for a photo</label>
+            <div class="search-row">
+              <input type="text" id="commons-query" placeholder="Search term" />
+              <button class="action secondary" id="commons-search-btn">Search</button>
+            </div>
+            <div class="commons-status" id="commons-status"></div>
+            <div class="commons-results" id="commons-results"></div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px; margin-top:16px;">
+            <button class="action" id="brand-save-btn">Save branding</button>
+            <span id="brand-save-status">Saved</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Plays</h2>
+      <div class="sub header-actions" style="justify-content:space-between;">
+        <span>Plays generated for this program.</span>
+        <div class="header-actions">
+          <a id="team-page-link" href="team.html" target="_blank" rel="noopener" class="link-btn secondary">Open Team Page &#8599;</a>
+          <a id="build-play-link" href="create.html" class="action link-btn" style="background:var(--gold); color:#0d1017; padding:6px 12px; border-radius:6px; font-size:12px;">Build a play &rarr;</a>
+        </div>
+      </div>
+      <table id="plays-table">
+        <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="plays-empty" style="display:none; color:var(--muted); font-size:13px; padding-top:8px;">No plays yet for this program.</div>
+    </div>
+
+    <div class="card">
+      <h2>Team members</h2>
+      <div class="sub">Your roster. For Athlete/Parent rows, use "Invite Login" to send a real username+password account (currently piloted on Dartmouth only).</div>
+      <table id="members-table">
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="add-form">
+        <input type="text" id="new-member-name" placeholder="Name" />
+        <select id="new-member-role"></select>
+        <input type="text" id="new-member-phone" placeholder="Phone (optional)" />
+        <input type="text" id="new-member-email" placeholder="Email (optional)" />
+        <button class="action" id="add-member-btn">Add team member</button>
+      </div>
+
+      <div class="team-toolbar">
+        <button class="action secondary" id="download-xlsx-btn">&darr; Download roster template (.xlsx)</button>
+        <button class="action secondary" id="upload-xlsx-btn">&uarr; Upload roster (.xlsx)</button>
+        <input type="file" id="xlsx-file-input" accept=".xlsx" style="display:none;" />
+      </div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">The downloaded template includes your current roster plus blank rows with a real dropdown on the Role column (Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, Parent) -- no typos possible. Fill it in in Excel/Google Sheets/Numbers and upload it back; each new row is added to the roster, same as the one-at-a-time form above.</div>
+      <div id="csv-summary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Coaches</h2>
+      <div class="sub">Real dashboard logins with write access to this program -- separate from the team-member links above, which are read-only.</div>
+      <table id="coaches-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Publish</th><th>Hide</th><th>Delete</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="sub" id="staff-permissions-hint" style="margin-top:8px; margin-bottom:0; display:none;">Only the head coach can change these. Each box grants that coach the ability to publish, hide, or delete plays on this program independently -- unchecking one takes it away immediately.</div>
+
+      <div class="add-form" id="invite-coach-form" style="display:none;">
+                <input type="text" id="new-coach-name" placeholder="Name (optional)" />
+        <input type="text" id="new-coach-email" placeholder="Email" />
+        <select id="new-coach-role">
+          <option value="assistant_coach">Assistant Coach</option>
+          <option value="graduate_assistant">Graduate Assistant</option>
+          <option value="dbo">DBO</option>
+        </select>
+        <!-- Grouped into one flex unit (Sep 15, 2026 CSS fix) so the three
+             permission checkboxes wrap together as a block if the row runs
+             out of room, instead of "Can delete" splitting off alone onto
+             its own line while Publish/Hide stay up top. -->
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:nowrap; white-space:nowrap;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-publish" style="width:auto;" /> Can publish
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-hide" style="width:auto;" /> Can hide
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+            <input type="checkbox" id="new-coach-can-delete" style="width:auto;" /> Can delete
+          </label>
+        </div>
+        <button class="action" id="invite-coach-btn">Invite coach</button>
+      </div>
+      <div class="sub" style="margin-top:8px; margin-bottom:0;">Only the head coach can invite other coaches. This sends a real account invite by email -- they'll set their own password and get a dashboard login.</div>
+      <div id="invite-coach-status"></div>
+    </div>
+  </div>
+</main>
+
+<!-- Self-hosted (not CDN) so roster import/export doesn't depend on a
+     third-party host being reachable -- ExcelJS is what actually writes
+     the real dropdown (data validation) into the .xlsx template below. -->
+<script src="/js/vendor/exceljs.min.js"></script>
+<script type="module">
+  import { supabase, requireSession } from "/js/supabase-client.js";
+
+  // The full role taxonomy for team members. Stored in the database as the
+  // slug (left); shown to humans -- in the UI, the CSS pill classes, and the
+  // Excel roster template's dropdown -- as the label (right). Head Coach,
+  // Assistant Coach, Graduate Assistant, and DBO are the roles who can
+  // eventually build plays themselves (once per-person logins ship as a
+  // separate feature) -- for now this list is purely organizational, same
+  // as Athlete/Parent.
+  const ROLES = [
+    { slug: "head_coach", label: "Head Coach" },
+    { slug: "assistant_coach", label: "Assistant Coach" },
+    { slug: "graduate_assistant", label: "Graduate Assistant" },
+    { slug: "dbo", label: "DBO" },
+    { slug: "athlete", label: "Athlete" },
+    { slug: "parent", label: "Parent" },
+  ];
+  const ROLE_LABELS = Object.fromEntries(ROLES.map((r) => [r.slug, r.label]));
+  const ROLE_LABEL_TO_SLUG = Object.fromEntries(ROLES.map((r) => [r.label.toLowerCase(), r.slug]));
+
+  function roleLabel(slug) {
+    return ROLE_LABELS[slug] || slug;
+  }
+
+  // Accepts either the exact slug ("head_coach") or the human label
+  // ("Head Coach") -- the Excel upload round-trips display labels, but the
+  // one-at-a-time form and any hand-edited CSV-era data might use slugs.
+  function roleSlugFrom(value) {
+    const v = (value || "").trim();
+    if (ROLE_LABELS[v]) return v;
+    return ROLE_LABEL_TO_SLUG[v.toLowerCase()] || null;
+  }
+
+  document.getElementById("new-member-role").innerHTML = ROLES.map(
+    (r) => `<option value="${r.slug}">${r.label}</option>`
+  ).join("");
+
+  let programs = [];
+  let currentProgramId = null;
+  let currentProgramSlug = null;
+  let currentUserId = null;
+  let currentUserCanPublish = false;
+  let currentUserCanHide = false;
+  let currentUserCanDelete = false;
+  let currentUserRole = null;
+  // Master-login/staff (Sep 15, 2026): true only for an account with a
+  // live (non-expired) row in staff_accounts -- see is_chalktalk_staff()
+  // in SQL--master-login-staff.sql. Never set client-side; always the
+  // result of asking the database, which is the actual enforcement point.
+  let isStaffUser = false;
+
+  // Known short-form marks for programs whose real initials wouldn't read
+  // cleanly (e.g. "deMatha" -> "DM" reads better than "D"). Anything not
+  // listed here falls back to auto-deriving initials from the program name.
+  const INITIALS_OVERRIDES = {
+    "melo-16u": "MELO",
+    "dematha": "DM",
+    "lsu": "LSU",
+    "dartmouth": "DART",
+  };
+
+  function initialsFor(program) {
+    // Matches the priority order in public/js/chalk-team-common.js: an
+    // explicit crest_label set on the program (via SQL or the Branding
+    // editor below) always wins, so the watermark stays in sync with
+    // whatever the coach has actually set -- it previously checked the
+    // local override list FIRST, which meant a real crest_label update
+    // (e.g. RPCS -> "REDS", Dartmouth -> "D") never reached the watermark.
+    if (program.crest_label) return program.crest_label;
+    const key = (program.slug || "").toLowerCase();
+    if (INITIALS_OVERRIDES[key]) return INITIALS_OVERRIDES[key];
+    const words = (program.name || program.slug || "?").split(/\s+/).filter(Boolean);
+    const letters = words.map((w) => w[0]).join("").toUpperCase();
+    return letters.slice(0, 5) || "?";
+  }
+
+  function renderWatermark(program) {
+    const wm = document.getElementById("watermark");
+    const text = initialsFor(program);
+    wm.innerHTML = Array.from({ length: 140 }, () => `<span>${text}</span>`).join("");
+  }
+
+  async function loadPrograms() {
+    const { data, error } = await supabase
+      .from("programs")
+      .select(
+        "id, slug, name, coach_name, coach_name_public, hero_photo_url, photo_credit_label, photo_credit_url, crest_label, crest_font, color_primary, color_secondary"
+      )
+      .order("name");
+    if (error) {
+      document.getElementById("loading").textContent = "Couldn't load programs: " + error.message;
+      return;
+    }
+    programs = data || [];
+    const select = document.getElementById("program-select");
+    select.innerHTML = programs.map(p => `<option value="${p.id}">${p.name} (${p.slug})</option>`).join("");
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("content").style.display = "block";
+    if (programs.length) {
+      currentProgramId = programs[0].id;
+      currentProgramSlug = programs[0].slug;
+      updateBuildPlayLink(currentProgramId);
+      updateTeamPageLink(programs[0]);
+      renderWatermark(programs[0]);
+      await loadProgramDetail(currentProgramId);
+    }
+    select.addEventListener("change", async (e) => {
+      currentProgramId = e.target.value;
+      const program = programs.find((p) => p.id === currentProgramId);
+      currentProgramSlug = program?.slug || null;
+      updateBuildPlayLink(currentProgramId);
+      updateTeamPageLink(program);
+      renderWatermark(program || {});
+      document.getElementById("csv-summary").style.display = "none";
+      await loadProgramDetail(currentProgramId);
+    });
+  }
+
+  function updateBuildPlayLink(programId) {
+    const link = document.getElementById("build-play-link");
+    if (link) link.href = `create.html?program=${encodeURIComponent(programId)}`;
+  }
+
+  function updateTeamPageLink(program) {
+    const link = document.getElementById("team-page-link");
+    if (link && program?.slug) link.href = `team.html?slug=${encodeURIComponent(program.slug)}`;
+  }
+
+  async function loadProgramDetail(programId) {
+    const program = programs.find((p) => p.id === programId);
+    loadBrandingForm(program);
+
+    const { data: coachRow } = await supabase
+      .from("program_coaches")
+      .select("role, can_publish, can_hide, can_delete")
+      .eq("program_id", programId)
+      .eq("coach_id", currentUserId)
+      .maybeSingle();
+    // Staff (isStaffUser) is OR'd in here to mirror exactly what the
+    // database already grants server-side via coach_has_permission()'s
+    // own `is_chalktalk_staff() or ...` check -- this is UI-only so a
+    // staff account doesn't see buttons/checkboxes that would otherwise
+    // work fine at the database level but appear greyed out or hidden.
+    // A staff account has no program_coaches row at all (by design, so
+    // it never appears as a roster/coach entry), so coachRow is always
+    // null for them here -- that's expected, not an error.
+    currentUserCanPublish = !!(coachRow && coachRow.can_publish) || isStaffUser;
+    currentUserCanHide = !!(coachRow && coachRow.can_hide) || isStaffUser;
+    currentUserCanDelete = !!(coachRow && coachRow.can_delete) || isStaffUser;
+    currentUserRole = coachRow ? coachRow.role : (isStaffUser ? "staff" : null);
+
+    const inviteForm = document.getElementById("invite-coach-form");
+    if (inviteForm) inviteForm.style.display = (currentUserRole === "head_coach" || isStaffUser) ? "flex" : "none";
+
+    await Promise.all([loadPlays(programId), loadMembers(programId), loadCoaches(programId)]);
+  }
+
+  // ---- Program Branding card ----
+  // Mirrors the crest/coach-line/accent-color rendering logic in
+  // public/js/chalk-team-common.js (initialsFor / applyAccent) closely
+  // enough for a live preview, without importing that file -- it's a
+  // classic (non-module) script written for the public pages, and pulling
+  // it in here would be more coupling than this small preview needs.
+  function crestFallbackInitials(program) {
+    if (!program) return "?";
+    return initialsFor(program); // already defined above for the watermark
+  }
+
+  function hexToGradient(primary, secondary) {
+    const p = /^#[0-9a-f]{6}$/i.test(primary || "") ? primary : "#f0b429";
+    const s = /^#[0-9a-f]{6}$/i.test(secondary || "") ? secondary : p;
+    return `linear-gradient(160deg, ${p}, ${s})`;
+  }
+
+  function updateCrestPreview() {
+    const preview = document.getElementById("brand-crest-preview");
+    const label = document.getElementById("brand-crest-label").value.trim();
+    const primary = document.getElementById("brand-color-primary").value;
+    const secondary = document.getElementById("brand-color-secondary").value;
+    const fallback = document.getElementById("brand-crest-fallback-hint").dataset.fallback || "?";
+    preview.textContent = (label || fallback).slice(0, 5);
+    preview.style.background = hexToGradient(primary, secondary);
+  }
+
+  function updateHeroThumb() {
+    const url = document.getElementById("brand-hero-photo-url").value.trim();
+    const thumb = document.getElementById("brand-hero-thumb");
+    if (url) {
+      thumb.src = url;
+      thumb.style.display = "block";
+    } else {
+      thumb.removeAttribute("src");
+      thumb.style.display = "none";
+    }
+  }
+
+  function loadBrandingForm(program) {
+    const fallback = crestFallbackInitials(program || {});
+    document.getElementById("brand-crest-fallback-hint").dataset.fallback = fallback;
+    document.getElementById("brand-crest-fallback-hint").textContent = `Leave blank to auto-use "${fallback}" (derived from the program name).`;
+    document.getElementById("brand-crest-label").value = program?.crest_label || "";
+    document.getElementById("brand-color-primary").value = /^#[0-9a-f]{6}$/i.test(program?.color_primary || "") ? program.color_primary : "#f0b429";
+    document.getElementById("brand-color-secondary").value = /^#[0-9a-f]{6}$/i.test(program?.color_secondary || "") ? program.color_secondary : "#8a6a10";
+    document.getElementById("brand-coach-name").value = program?.coach_name || "";
+    document.getElementById("brand-coach-name-public").checked = !!program?.coach_name_public;
+    document.getElementById("brand-hero-photo-url").value = program?.hero_photo_url || "";
+    document.getElementById("brand-photo-credit-label").value = program?.photo_credit_label || "";
+    document.getElementById("brand-photo-credit-url").value = program?.photo_credit_url || "";
+    document.getElementById("commons-query").value = program?.name || "";
+    document.getElementById("commons-results").innerHTML = "";
+    document.getElementById("commons-status").textContent = "";
+    updateCrestPreview();
+    updateHeroThumb();
+    const saveStatus = document.getElementById("brand-save-status");
+    saveStatus.classList.remove("show");
+  }
+
+  ["brand-crest-label", "brand-color-primary", "brand-color-secondary"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", updateCrestPreview);
+  });
+  document.getElementById("brand-hero-photo-url").addEventListener("input", updateHeroThumb);
+
+  document.getElementById("brand-save-btn").addEventListener("click", async () => {
+    if (!currentProgramId) return;
+    const btn = document.getElementById("brand-save-btn");
+    const status = document.getElementById("brand-save-status");
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    const update = {
+      crest_label: document.getElementById("brand-crest-label").value.trim() || null,
+      color_primary: document.getElementById("brand-color-primary").value || null,
+      color_secondary: document.getElementById("brand-color-secondary").value || null,
+      coach_name: document.getElementById("brand-coach-name").value.trim() || null,
+      coach_name_public: document.getElementById("brand-coach-name-public").checked,
+      hero_photo_url: document.getElementById("brand-hero-photo-url").value.trim() || null,
+      photo_credit_label: document.getElementById("brand-photo-credit-label").value.trim() || null,
+      photo_credit_url: document.getElementById("brand-photo-credit-url").value.trim() || null,
+    };
+
+    const { error } = await supabase.from("programs").update(update).eq("id", currentProgramId);
+
+    btn.disabled = false;
+    btn.textContent = "Save branding";
+
+    if (error) {
+      alert("Couldn't save branding: " + error.message);
+      return;
+    }
+
+    // Keep the in-memory programs array in sync so switching away and back
+    // (or the watermark, which reads from this same array) reflects the
+    // save immediately without a full reload.
+    const program = programs.find((p) => p.id === currentProgramId);
+    if (program) Object.assign(program, update);
+    renderWatermark(program || {});
+
+    status.textContent = "Saved";
+    status.classList.add("show");
+    setTimeout(() => status.classList.remove("show"), 1800);
+  });
+
+  document.getElementById("commons-search-btn").addEventListener("click", async () => {
+    const query = document.getElementById("commons-query").value.trim();
+    const status = document.getElementById("commons-status");
+    const results = document.getElementById("commons-results");
+    results.innerHTML = "";
+    if (!query) {
+      status.textContent = "Type something to search for first.";
+      return;
+    }
+    const btn = document.getElementById("commons-search-btn");
+    btn.disabled = true;
+    status.textContent = "Searching Wikimedia Commons...";
+
+    try {
+      const res = await fetch(`/api/search-commons-photo?query=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      btn.disabled = false;
+      if (!res.ok) {
+        status.textContent = "Search failed: " + (data.error || res.statusText);
+        return;
+      }
+      const items = data.results || [];
+      if (!items.length) {
+        status.textContent = "No results found. Try a different search term.";
+        return;
+      }
+      status.textContent = `${items.length} result${items.length === 1 ? "" : "s"} -- click one to fill in the fields below (nothing saves until you click "Save branding").`;
+      items.forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "commons-result";
+        div.title = item.title;
+        div.innerHTML = `<img src="${item.thumbnailUrl}" alt="${item.title.replace(/"/g, "&quot;")}" loading="lazy" />`;
+        div.addEventListener("click", () => {
+          document.getElementById("brand-hero-photo-url").value = item.fullUrl;
+          const creditParts = [];
+          if (item.artist) creditParts.push(item.artist);
+          if (item.licenseShortName) creditParts.push(item.licenseShortName);
+          document.getElementById("brand-photo-credit-label").value = creditParts.length
+            ? `Photo: ${creditParts.join(", ")}`
+            : "Photo: Wikimedia Commons";
+          document.getElementById("brand-photo-credit-url").value = item.filePageUrl || "";
+          updateHeroThumb();
+          status.textContent = `Selected "${item.title}" -- remember to click "Save branding" to keep it.`;
+        });
+        results.appendChild(div);
+      });
+    } catch (err) {
+      btn.disabled = false;
+      status.textContent = "Search failed: " + err.message;
+    }
+  });
+
+  async function loadPlays(programId) {
+    const { data, error } = await supabase
+      .from("plays")
+      .select("id, title, play_type, status, hidden, updated_at")
+      .eq("program_id", programId)
+      .order("updated_at", { ascending: false });
+
+    const tbody = document.querySelector("#plays-table tbody");
+    const empty = document.getElementById("plays-empty");
+    tbody.innerHTML = "";
+    if (error || !data || data.length === 0) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    for (const play of data) {
+      const tr = document.createElement("tr");
+      const isPendingReview = play.status === "in_review";
+      const statusLabel = play.hidden ? "Hidden" : isPendingReview ? "Pending review" : play.status;
+      // Publish/hide/delete are now independently assignable per coach
+      // (Sep 15, 2026 -- see the Staff Permissions section of the Coaches
+      // card below), not a fixed role list. The database enforces this too
+      // -- via triggers on `plays` keyed off program_coaches.can_publish/
+      // can_hide/can_delete -- this is just so a coach without a given
+      // permission doesn't see a button that would only fail for them.
+      const actionCell = [
+        isPendingReview && currentUserCanPublish
+          ? `<button class="link-btn secondary approve-play-btn" data-play-id="${play.id}">Approve &amp; publish</button>`
+          : "",
+        currentUserCanHide
+          ? `<button class="link-btn secondary hide-play-btn" data-play-id="${play.id}" data-hidden="${play.hidden}">${play.hidden ? "Unhide" : "Hide"}</button>`
+          : "",
+        currentUserCanDelete
+          ? `<button class="link-btn secondary delete-play-btn" data-play-id="${play.id}" data-play-title="${play.title.replace(/"/g, "&quot;")}">Delete</button>`
+          : "",
+      ].join(" ");
+      tr.innerHTML = `
+        <td>${play.title}</td>
+        <td>${play.play_type || "—"}</td>
+        <td>${statusLabel}</td>
+        <td>${new Date(play.updated_at).toLocaleDateString()}</td>
+        <td>${actionCell}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll(".approve-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "Publishing...";
+        const { error: publishErr } = await supabase
+          .from("plays")
+          .update({ status: "published" })
+          .eq("id", btn.dataset.playId);
+        if (publishErr) {
+          alert("Couldn't publish: " + publishErr.message);
+          btn.disabled = false;
+          btn.textContent = "Approve & publish";
+          return;
+        }
+        // Narration (Item 2): this is the SECOND of the two publish
+        // triggers -- the other is the creation-time publish path inside
+        // generate-playbook.js itself. This approve/publish action never
+        // goes through that endpoint (it's a direct Supabase update from
+        // here), so narration has to be kicked off from this call site
+        // independently. generate-narration.js re-checks
+        // status/narration_enabled/level itself and is safe to call even
+        // when none of those end up eligible -- it just responds
+        // skipped:true. Best-effort: never blocks the publish UI and
+        // never alerts the coach on failure, only logs -- narration is
+        // additive on top of an already-successful publish.
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          await fetch("/api/generate-narration", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ playId: btn.dataset.playId }),
+          });
+        } catch (narrationErr) {
+          console.log("[dashboard] narration trigger failed:", narrationErr);
+        }
+        await loadPlays(programId);
+      });
+    });
+
+    tbody.querySelectorAll(".hide-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const nextHidden = btn.dataset.hidden !== "true";
+        btn.disabled = true;
+        const { error: hideErr } = await supabase
+          .from("plays")
+          .update({ hidden: nextHidden })
+          .eq("id", btn.dataset.playId);
+        if (hideErr) {
+          alert("Couldn't update: " + hideErr.message);
+          btn.disabled = false;
+          return;
+        }
+        await loadPlays(programId);
+      });
+    });
+
+    tbody.querySelectorAll(".delete-play-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm(`Permanently delete "${btn.dataset.playTitle}"? This can't be undone.`)) return;
+        btn.disabled = true;
+        btn.textContent = "Deleting...";
+        const { error: deleteErr } = await supabase
+          .from("plays")
+          .delete()
+          .eq("id", btn.dataset.playId);
+        if (deleteErr) {
+          alert("Couldn't delete: " + deleteErr.message);
+          btn.disabled = false;
+          btn.textContent = "Delete";
+          return;
+        }
+        await loadPlays(programId);
+      });
+    });
+  }
+
+  async function loadMembers(programId) {
+    const { data: members, error } = await supabase
+      .from("team_members")
+      .select("id, name, role, phone, email")
+      .eq("program_id", programId)
+      .order("name");
+
+    const tbody = document.querySelector("#members-table tbody");
+    tbody.innerHTML = "";
+    if (error || !members) return;
+
+    for (const member of members) {
+      // "Invite Login" is only offered for athlete/parent rows -- coaching
+      // staff logins go through the separate Invite Coach card below. This
+      // doesn't check or show whether a login already exists for this row
+      // (viewer_accounts has no RLS policies, so the coach's own
+      // session-scoped client can't read it -- see the migration SQL) --
+      // a known v1 limitation. Re-clicking just re-invites, same posture
+      // as Invite Coach.
+      const canInviteLogin = member.role === "athlete" || member.role === "parent";
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${member.name}</td>
+        <td><span class="pill ${member.role}">${roleLabel(member.role)}</span></td>
+        <td>${member.phone || "&mdash;"}</td>
+        <td>${member.email || "&mdash;"}</td>
+        <td>${canInviteLogin ? `<button class="action secondary" data-invite-login-id="${member.id}" data-invite-login-name="${member.name}">Invite Login</button>` : ""}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("button[data-invite-login-id]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const memberId = btn.dataset.inviteLoginId;
+        const memberName = btn.dataset.inviteLoginName;
+        const email = window.prompt(
+          `Email to invite for ${memberName}'s login.\n\nFor a below-high-school athlete, enter the PARENT's email -- they'll hold this login on the athlete's behalf. For a high-school-or-above athlete, enter the athlete's own email.`
+        );
+        if (!email) return;
+
+        btn.disabled = true;
+        btn.textContent = "Inviting...";
+
+        const { data: { session } } = await supabase.auth.getSession();
+        let result;
+        try {
+          const res = await fetch("/api/invite-viewer", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ programId: currentProgramId, teamMemberId: memberId, email: email.trim() }),
+          });
+          result = await res.json();
+          if (!res.ok) throw new Error(result.error || "Invite failed");
+        } catch (err) {
+          alert("Couldn't invite: " + err.message);
+          btn.disabled = false;
+          btn.textContent = "Invite Login";
+          return;
+        }
+
+        alert(`Invited ${email.trim()}. They'll get a real login email at /player-login.html to set their password.`);
+        btn.disabled = false;
+        btn.textContent = "Invite Login";
+      });
+    });
+  }
+
+  const COACH_ROLE_LABELS = {
+    head_coach: "Head Coach",
+    assistant_coach: "Assistant Coach",
+    graduate_assistant: "Graduate Assistant",
+    dbo: "DBO",
+  };
+
+  // Staff Permissions (Sep 15, 2026): the head coach (and, once built, the
+  // master-login/staff tier -- see is_program_admin() in the SQL) can
+  // toggle publish/hide/delete per coach directly from this table. Anyone
+  // else just sees Yes/No -- the database's own program_coaches_admin_update
+  // RLS policy is what actually enforces this, this client-side check is
+  // only so a non-admin coach doesn't see editable checkboxes that would
+  // silently fail to save.
+  async function loadCoaches(programId) {
+    const { data: rows, error } = await supabase
+      .from("program_coaches")
+      .select("coach_id, role, can_publish, can_hide, can_delete, coaches ( email, display_name )")
+      .eq("program_id", programId)
+      .order("role");
+
+    const tbody = document.querySelector("#coaches-table tbody");
+    tbody.innerHTML = "";
+    const hint = document.getElementById("staff-permissions-hint");
+    if (error || !rows) return;
+
+    const isAdmin = currentUserRole === "head_coach" || isStaffUser;
+    if (hint) hint.style.display = isAdmin ? "block" : "none";
+
+    const permCell = (row, field, label) => {
+      if (!isAdmin) return row[field] ? "Yes" : "No";
+      return `<label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+        <input type="checkbox" class="perm-checkbox" data-coach-id="${row.coach_id}" data-field="${field}" ${row[field] ? "checked" : ""} style="width:auto;" />
+        <span class="sub" style="margin:0;">${label}</span>
+      </label>`;
+    };
+
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      const name = row.coaches?.display_name || "&mdash;";
+      const email = row.coaches?.email || "&mdash;";
+      tr.innerHTML = `
+        <td>${name}</td>
+        <td>${email}</td>
+        <td><span class="pill">${COACH_ROLE_LABELS[row.role] || row.role}</span></td>
+        <td>${permCell(row, "can_publish", "Publish")}</td>
+        <td>${permCell(row, "can_hide", "Hide")}</td>
+        <td>${permCell(row, "can_delete", "Delete")}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    if (!isAdmin) return;
+
+    tbody.querySelectorAll(".perm-checkbox").forEach((cb) => {
+      cb.addEventListener("change", async () => {
+        cb.disabled = true;
+        const { error: updateErr } = await supabase
+          .from("program_coaches")
+          .update({ [cb.dataset.field]: cb.checked })
+          .eq("program_id", programId)
+          .eq("coach_id", cb.dataset.coachId);
+        cb.disabled = false;
+        if (updateErr) {
+          alert("Couldn't update permission: " + updateErr.message);
+          cb.checked = !cb.checked;
+          return;
+        }
+        // If the coach editing this IS themselves (e.g. a head coach
+        // toggling their own row), refresh the cached permission flags so
+        // the plays table's hide/delete buttons update without a reload.
+        // loadProgramDetail() already re-loads plays/members/coaches
+        // together -- no need to call loadPlays separately.
+        if (cb.dataset.coachId === currentUserId) {
+          await loadProgramDetail(programId);
+        }
+      });
+    });
+  }
+
+  document.getElementById("invite-coach-btn")?.addEventListener("click", async () => {
+        const nameInput = document.getElementById("new-coach-name");
+    const emailInput = document.getElementById("new-coach-email");
+    const roleSelect = document.getElementById("new-coach-role");
+    const canPublishCheckbox = document.getElementById("new-coach-can-publish");
+    const canHideCheckbox = document.getElementById("new-coach-can-hide");
+    const canDeleteCheckbox = document.getElementById("new-coach-can-delete");
+    const statusEl = document.getElementById("invite-coach-status");
+    const name = nameInput.value.trim();
+    const email = emailInput.value.trim();
+    if (!email || !currentProgramId) return;
+
+    const btn = document.getElementById("invite-coach-btn");
+    btn.disabled = true;
+    btn.textContent = "Inviting...";
+    statusEl.textContent = "";
+
+    const { data: { session } } = await supabase.auth.getSession();
+    let result;
+    try {
+      const res = await fetch("/api/invite-coach", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          programId: currentProgramId,
+          name: name || undefined,
+          email,
+          role: roleSelect.value,
+          canPublish: canPublishCheckbox.checked,
+          canHide: canHideCheckbox.checked,
+          canDelete: canDeleteCheckbox.checked,
+        }),
+      });
+      result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Invite failed");
+    } catch (err) {
+      statusEl.className = "error";
+      statusEl.textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Invite coach";
+      return;
+    }
+
+    statusEl.className = "";
+    statusEl.textContent = `Invited ${email}. They'll get an email to set their password and log in.`;
+    nameInput.value = "";
+    emailInput.value = "";
+    canPublishCheckbox.checked = false;
+    canHideCheckbox.checked = false;
+    canDeleteCheckbox.checked = false;
+    btn.disabled = false;
+    btn.textContent = "Invite coach";
+    await loadCoaches(currentProgramId);
+  });
+
+  // Shared by the one-at-a-time "Add team member" button and the CSV bulk
+  // upload -- just inserts the roster row. Real access for athlete/parent
+  // rows is granted separately via the "Invite Login" button (a real
+  // Supabase Auth account, see api/invite-viewer.js) -- there is no more
+  // tokenless access-link path. Returns { ok: true, name, email } or
+  // { ok: false, error }.
+  async function createTeamMember(programId, { name, role, phone, email }) {
+    const { error: memberErr } = await supabase
+      .from("team_members")
+      .insert({ program_id: programId, name, role, phone: phone || null, email: email || null });
+
+    if (memberErr) {
+      return { ok: false, error: `Couldn't add ${name}: ${memberErr.message}` };
+    }
+
+    return { ok: true, name, email };
+  }
+
+  document.getElementById("add-member-btn").addEventListener("click", async () => {
+    const nameInput = document.getElementById("new-member-name");
+    const roleSelect = document.getElementById("new-member-role");
+    const phoneInput = document.getElementById("new-member-phone");
+    const emailInput = document.getElementById("new-member-email");
+    const name = nameInput.value.trim();
+    const role = roleSelect.value;
+    const phone = phoneInput.value.trim();
+    const email = emailInput.value.trim();
+    if (!name || !currentProgramId) return;
+
+    const btn = document.getElementById("add-member-btn");
+    btn.disabled = true;
+    btn.textContent = "Adding...";
+
+    const result = await createTeamMember(currentProgramId, { name, role, phone, email });
+
+    btn.disabled = false;
+    btn.textContent = "Add team member";
+
+    if (!result.ok) {
+      alert(result.error);
+      await loadMembers(currentProgramId);
+      return;
+    }
+
+    nameInput.value = "";
+    phoneInput.value = "";
+    emailInput.value = "";
+    await loadMembers(currentProgramId);
+  });
+
+  // ---- Excel (.xlsx) roster download/upload ----
+  // Plain CSV can't hold a real dropdown -- that's an Excel/Sheets/Numbers
+  // data-validation feature, not something the CSV file format supports at
+  // all. Using ExcelJS (self-hosted, see the <script> tag above) lets the
+  // downloaded template lock the Role column to the exact 6 allowed values,
+  // so there's no way to type in something ambiguous in the first place.
+  const ROLE_LIST_FORMULA = `"${ROLES.map((r) => r.label).join(",")}"`;
+  const BLANK_ROWS_IN_TEMPLATE = 40;
+
+  document.getElementById("download-xlsx-btn").addEventListener("click", async () => {
+    if (!currentProgramId) return;
+    const { data: members, error } = await supabase
+      .from("team_members")
+      .select("name, role, phone, email")
+      .eq("program_id", currentProgramId)
+      .order("name");
+    if (error) {
+      alert("Couldn't load roster: " + error.message);
+      return;
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Roster");
+    ws.columns = [
+      { header: "name", key: "name", width: 26 },
+      { header: "role", key: "role", width: 22 },
+      { header: "phone", key: "phone", width: 18 },
+      { header: "email", key: "email", width: 28 },
+    ];
+    ws.getRow(1).font = { bold: true };
+
+    (members || []).forEach((m) => {
+      ws.addRow({ name: m.name, role: roleLabel(m.role), phone: m.phone || "", email: m.email || "" });
+    });
+    const lastExistingRow = (members || []).length + 1;
+    for (let i = 0; i < BLANK_ROWS_IN_TEMPLATE; i++) ws.addRow({});
+
+    // Data validation on the Role column, covering existing rows plus all
+    // the blank rows below -- this is the actual dropdown.
+    for (let r = 2; r <= lastExistingRow + BLANK_ROWS_IN_TEMPLATE; r++) {
+      ws.getCell(`B${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [ROLE_LIST_FORMULA],
+        showErrorMessage: true,
+        errorStyle: "error",
+        errorTitle: "Invalid role",
+        error: "Pick a role from the dropdown -- Head Coach, Assistant Coach, Graduate Assistant, DBO, Athlete, or Parent.",
+      };
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentProgramSlug || "team"}-roster.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  const xlsxFileInput = document.getElementById("xlsx-file-input");
+  document.getElementById("upload-xlsx-btn").addEventListener("click", () => xlsxFileInput.click());
+
+  xlsxFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file || !currentProgramId) return;
+
+    const summary = document.getElementById("csv-summary");
+    summary.className = "";
+    summary.style.display = "block";
+    summary.textContent = "Reading spreadsheet...";
+
+    let ws;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      ws = wb.worksheets[0];
+    } catch (err) {
+      summary.className = "error";
+      summary.textContent = "Couldn't read that file -- make sure it's the .xlsx template (not a renamed CSV) and try again.";
+      return;
+    }
+    if (!ws) {
+      summary.className = "error";
+      summary.textContent = "That file doesn't have any sheets in it.";
+      return;
+    }
+
+    const header = (ws.getRow(1).values || []).map((h) => String(h ?? "").trim().toLowerCase());
+    // ExcelJS row.values is 1-indexed with index 0 empty -- keep that offset
+    // rather than normalizing it away, so column letters and indices agree.
+    const nameIdx = header.indexOf("name");
+    const roleIdx = header.indexOf("role");
+    const phoneIdx = header.indexOf("phone");
+    const emailIdx = header.indexOf("email");
+    if (nameIdx === -1 || roleIdx === -1) {
+      summary.className = "error";
+      summary.textContent = 'Header row must include at least "name" and "role" columns.';
+      return;
+    }
+
+    const successes = [];
+    const failures = [];
+    const totalRows = ws.rowCount - 1;
+
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r).values || [];
+      const name = String(row[nameIdx] ?? "").trim();
+      const roleRaw = String(row[roleIdx] ?? "").trim();
+      const phone = phoneIdx !== -1 ? String(row[phoneIdx] ?? "").trim() : "";
+      const email = emailIdx !== -1 ? String(row[emailIdx] ?? "").trim() : "";
+
+      if (!name && !roleRaw) continue; // silently skip fully blank rows
+      const role = roleSlugFrom(roleRaw);
+      if (!name || !role) {
+        if (name || roleRaw) {
+          failures.push(`${name || "(unnamed row)"}: role must be one of ${ROLES.map((r) => r.label).join(", ")} (got "${roleRaw}")`);
+        }
+        continue;
+      }
+
+      summary.textContent = `Adding ${successes.length + failures.length + 1} of ${totalRows}...`;
+      const result = await createTeamMember(currentProgramId, { name, role, phone, email });
+      if (result.ok) {
+        successes.push(result);
+      } else {
+        failures.push(result.error);
+      }
+    }
+
+    summary.className = failures.length && !successes.length ? "error" : "";
+    summary.innerHTML = `
+      <strong>${successes.length} added</strong>${failures.length ? `, ${failures.length} failed` : ""}.
+      ${failures.length ? `<br/>${failures.map((f) => `&bull; ${f}`).join("<br/>")}` : ""}
+    `;
+
+    await loadMembers(currentProgramId);
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login.html";
+  });
+
+  // ---- Coach-tier MFA (Sep 15, 2026, optional per Shaun's Sep 15 answer) ----
+  // Uses Supabase Auth's own MFA API directly (auth.mfa.enroll/challenge/
+  // verify/unenroll/listFactors) -- no new database table needed, Supabase
+  // tracks factors itself. Enrollment happens here on the dashboard;
+  // login.html's own goPostLogin flow (see that file) is what actually
+  // challenges for the code at sign-in time once a factor is verified.
+  const mfaStatusEl = document.getElementById("mfa-status");
+  const mfaEnrollPanel = document.getElementById("mfa-enroll-panel");
+  const mfaMsg = document.getElementById("mfa-msg");
+  let pendingMfaFactorId = null;
+
+  async function refreshMfaStatus() {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) {
+      mfaStatusEl.textContent = "Couldn't load 2FA status: " + error.message;
+      return;
+    }
+    const verified = (data.totp || []).filter((f) => f.status === "verified");
+    if (verified.length) {
+      mfaStatusEl.innerHTML = `<span class="pill active">Enabled</span> <button class="link-btn secondary" id="mfa-remove-btn" style="margin-left:8px;">Turn off</button>`;
+      document.getElementById("mfa-remove-btn").addEventListener("click", async () => {
+        if (!confirm("Turn off two-factor authentication for your account? You'll be able to log in with just your password again.")) return;
+        const { error: unenrollErr } = await supabase.auth.mfa.unenroll({ factorId: verified[0].id });
+        if (unenrollErr) {
+          alert("Couldn't turn off 2FA: " + unenrollErr.message);
+          return;
+        }
+        await refreshMfaStatus();
+      });
+    } else {
+      mfaStatusEl.innerHTML = `<span class="pill revoked">Not enabled</span> <button class="link-btn secondary" id="mfa-enable-btn" style="margin-left:8px;">Enable 2FA</button>`;
+      document.getElementById("mfa-enable-btn").addEventListener("click", startMfaEnroll);
+    }
+  }
+
+  async function startMfaEnroll() {
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+    // Supabase only allows one un-verified TOTP factor per user at a time --
+    // clean up any abandoned attempt from a previous "Enable 2FA" click that
+    // was never confirmed, so this doesn't error out on a stale factor.
+    const { data: existing } = await supabase.auth.mfa.listFactors();
+    const stale = (existing?.totp || []).filter((f) => f.status !== "verified");
+    for (const f of stale) {
+      await supabase.auth.mfa.unenroll({ factorId: f.id });
+    }
+
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = "Couldn't start 2FA setup: " + error.message;
+      return;
+    }
+    pendingMfaFactorId = data.id;
+    document.getElementById("mfa-qr-wrap").innerHTML = `<img src="${data.totp.qr_code}" alt="Scan with your authenticator app" style="background:#fff; padding:8px; border-radius:8px; max-width:180px;" />`;
+    document.getElementById("mfa-secret-hint").textContent = `Can't scan? Enter this code manually in your authenticator app: ${data.totp.secret}`;
+    mfaEnrollPanel.style.display = "block";
+  }
+
+  document.getElementById("mfa-verify-btn")?.addEventListener("click", async () => {
+    const codeInput = document.getElementById("mfa-verify-code");
+    const code = codeInput.value.trim();
+    if (!code || !pendingMfaFactorId) return;
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+
+    const { data: challenge, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: pendingMfaFactorId });
+    if (challengeErr) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = challengeErr.message;
+      return;
+    }
+    const { error: verifyErr } = await supabase.auth.mfa.verify({
+      factorId: pendingMfaFactorId,
+      challengeId: challenge.id,
+      code,
+    });
+    if (verifyErr) {
+      mfaMsg.className = "error";
+      mfaMsg.textContent = "That code didn't work -- check your authenticator app's current code and try again.";
+      return;
+    }
+
+    mfaMsg.className = "";
+    mfaMsg.textContent = "Two-factor authentication is now enabled. You'll be asked for a code the next time you log in.";
+    mfaEnrollPanel.style.display = "none";
+    codeInput.value = "";
+    pendingMfaFactorId = null;
+    await refreshMfaStatus();
+  });
+
+  document.getElementById("mfa-cancel-btn")?.addEventListener("click", async () => {
+    if (pendingMfaFactorId) {
+      await supabase.auth.mfa.unenroll({ factorId: pendingMfaFactorId });
+      pendingMfaFactorId = null;
+    }
+    mfaEnrollPanel.style.display = "none";
+    document.getElementById("mfa-verify-code").value = "";
+    mfaMsg.className = "";
+    mfaMsg.textContent = "";
+  });
+
+  (async () => {
+    const session = await requireSession();
+    if (!session) return;
+    currentUserId = session.user.id;
+
+    // Master-login/staff check (Sep 15, 2026): is_chalktalk_staff() is a
+    // SECURITY DEFINER SQL function (see SQL--master-login-staff.sql), so
+    // this RPC call just asks the database the same question every RLS
+    // policy and permission trigger already asks -- there's no separate
+    // client-side notion of "staff" to keep in sync. Failing closed (i.e.
+    // treating any error here as "not staff") is deliberate: a broken RPC
+    // call should never accidentally grant broader UI than a normal coach.
+    try {
+      const { data: staffCheck, error: staffErr } = await supabase.rpc("is_chalktalk_staff");
+      isStaffUser = !staffErr && staffCheck === true;
+    } catch (err) {
+      isStaffUser = false;
+    }
+    const staffBanner = document.getElementById("staff-banner");
+    if (staffBanner) staffBanner.style.display = isStaffUser ? "block" : "none";
+
+    await refreshMfaStatus();
+    await loadPrograms();
+  })();
+</script>
+</body>
+</html>
