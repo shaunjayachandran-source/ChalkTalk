@@ -308,15 +308,56 @@ export default async function handler(req, res) {
     return sendJson(res, { error: `Failed to save playbook: ${err.message}` }, 502);
   }
 
+  // brief_json (Item 2, auditory narration): folds each confirmed phase's
+  // brief data together with the sidebarHtml this step just generated for
+  // it. This is the SAME phase data generate-narration.js later grounds
+  // its narration in -- a deliberate single shared source rather than a
+  // third un-synced copy of phase/anchor data, per the project's own
+  // documented history of generate-brief.js/generate-playbook.js drift.
+  // Folded into this same update (alongside storage_url) rather than a
+  // separate write, since phaseResults (which carries sidebarHtml) isn't
+  // known until phase generation finishes above.
+  const briefJson = {
+    ...brief,
+    phases: brief.phases.map((phase) => {
+      const generated = phaseResults.find((p) => p.phaseNumber === phase.phaseNumber);
+      return {
+        ...phase,
+        sidebarHtml: generated ? generated.sidebarHtml : "",
+      };
+    }),
+  };
+
   const { error: updateErr } = await supabase
     .from("plays")
-    .update({ storage_url: blobResult.url })
+    .update({ storage_url: blobResult.url, brief_json: briefJson })
     .eq("id", playRow.id);
   if (updateErr) {
     // The play and the file both exist at this point -- just the DB
-    // record's storage_url link didn't save. Don't fail the whole
+    // record's storage_url/brief_json didn't save. Don't fail the whole
     // request over it; the coach still gets a working URL back.
-    console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
+    console.log(`[generate-playbook] Failed to update storage_url/brief_json for play ${playRow.id}: ${updateErr.message}`);
+  }
+
+  // Narration (Item 2): only ever triggered from a publish action, and
+  // only for the creation-time publish path here -- initialStatus was
+  // already resolved to "published" above from the coach's own
+  // can_publish grant. The OTHER trigger point (an explicit Publish click
+  // on an existing in_review play) lives in dashboard.html and is
+  // untouched by this file. Awaited rather than backgrounded: a plain
+  // fire-and-forget fetch isn't reliably safe on Vercel (the function can
+  // be frozen the instant this response is sent), and Fluid Compute
+  // (needed for waitUntil) isn't confirmed enabled on this project.
+  // generate-narration.js re-checks status/narration_enabled/level itself
+  // and is never allowed to fail this request -- any error here is
+  // logged, never surfaced to the coach, since narration is additive on
+  // top of an already-successful playbook build.
+  if (initialStatus === "published") {
+    try {
+      await triggerNarration(playRow.id, req);
+    } catch (err) {
+      console.log(`[generate-playbook] narration trigger failed for play ${playRow.id}: ${err.message}`);
+    }
   }
 
   const diagramWarnings = phaseResults.flatMap((p) =>
@@ -332,6 +373,35 @@ export default async function handler(req, res) {
     status: initialStatus,
     diagramWarnings: diagramWarnings.length ? diagramWarnings : undefined,
   });}
+
+// Calls /api/generate-narration for this play, forwarding the original
+// caller's own auth header so generate-narration.js's own
+// validateCoachSession check passes exactly as it would for a direct
+// call. Resolves the origin from the incoming request's own Host header
+// (works in every Vercel environment -- Preview, Production, and any
+// custom domain -- without needing a separate env var to keep in sync).
+async function triggerNarration(playId, req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers.host;
+  if (!host) {
+    throw new Error("Missing Host header, cannot resolve narration endpoint origin");
+  }
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+
+  const res = await fetch(`${proto}://${host}/api/generate-narration`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authHeader ? { Authorization: authHeader } : {}),
+    },
+    body: JSON.stringify({ playId }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`generate-narration returned ${res.status}: ${errText}`);
+  }
+}
 
 // Defensive: the prompt tells the model NOT to include its own outer <svg>
 // tag (the code supplies the court + real <svg> wrapper already), but if
