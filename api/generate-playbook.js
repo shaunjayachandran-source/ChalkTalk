@@ -307,7 +307,7 @@ export default async function handler(req, res) {
     return sendJson(res, { error: `Play generation failed: ${err.message}` }, 502);
   }
 
-  const html = buildShellHtml(brief, phaseResults);
+  const html = buildShellHtml(brief, phaseResults, playRow.id, resolvedNarrationEnabled);
   const blobPath = `generated/${playRow.id}.html`;
 
   let blobResult;
@@ -556,7 +556,7 @@ ${JSON.stringify(phase, null, 2)}`;
   };
 }
 
-function buildShellHtml(brief, phaseResults) {
+function buildShellHtml(brief, phaseResults, playId, narrationEnabled) {
   const tabs = phaseResults
     .map(
       (p, i) =>
@@ -618,6 +618,15 @@ function buildShellHtml(brief, phaseResults) {
   .kbox { background: var(--kbox-bg); border: 1px solid var(--kbox-border); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
   .bbridge { background: rgba(26,188,156,0.08); border: 1px solid var(--teal); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
   #tip { position: absolute; display: none; background: #1a1400; border: 1px solid var(--gold); color: var(--white); padding: 8px 12px; border-radius: 6px; font-size: 12px; max-width: 240px; z-index: 100; pointer-events: none; }
+  .narration-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .narration-play-btn { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 600; background: var(--panel-2); border: 1px solid var(--gold); color: var(--gold); padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  .narration-play-btn:hover { background: rgba(240,180,41,0.12); }
+  .narration-unavailable, .narration-pending { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--gray); }
+  @keyframes narrationPulse {
+    0%, 100% { filter: drop-shadow(0 0 0 rgba(240,180,41,0)); }
+    50% { filter: drop-shadow(0 0 7px rgba(240,180,41,0.95)); }
+  }
+  .pc.narrating-pulse { animation: narrationPulse 1s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -644,6 +653,10 @@ ${sidebars}
 
 <script>
   const totalPhases = ${phaseResults.length};
+  const PLAY_ID = ${JSON.stringify(playId || null)};
+  const NARRATION_ENABLED = ${narrationEnabled ? "true" : "false"};
+  let currentPhaseNum = ${phaseResults[0] ? phaseResults[0].phaseNumber : 1};
+
   function switchPhase(n) {
     document.querySelectorAll('.phase-diagram, .phase-sidebar').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -651,6 +664,8 @@ ${sidebars}
     document.getElementById('sb-' + n).classList.add('active');
     document.querySelector('.tab-btn[data-phase="' + n + '"]').classList.add('active');
     document.getElementById('progressFill').style.width = Math.round((n / totalPhases) * 100) + '%';
+    currentPhaseNum = n;
+    if (NARRATION_ENABLED) onPhaseSwitchedForNarration(n);
   }
   const tip = document.getElementById('tip');
   document.addEventListener('mouseover', (e) => {
@@ -668,6 +683,186 @@ ${sidebars}
   document.addEventListener('mouseout', (e) => {
     if (e.target.closest('.pc')) tip.style.display = 'none';
   });
+
+  // --- Auditory narration playback (Item 2) ---
+  // Narration is generated AFTER build/publish (see generate-narration.js)
+  // and this page is served straight from public Blob storage with no
+  // server/auth context of its own, so narration data can't be baked in
+  // at build time -- it's fetched client-side, once, from a small public
+  // read endpoint keyed only by playId (api/get-narration.js). Playback
+  // uses one plain <audio> element (no Web Audio API) with manual volume
+  // tweening for a cross-fade when switching phases mid-playback, per the
+  // agreed design. Player highlighting reads the per-segment start/end
+  // times ElevenLabs returned (plays.narration_json) and pulses whichever
+  // .pc circle matches the currently-speaking segment's player number.
+  let narrationByPhase = null; // { [phaseNumber]: { audioUrl, timings, error } }
+  let audioEl = null;
+  let narrationIsPlaying = false;
+
+  if (NARRATION_ENABLED && PLAY_ID) {
+    fetchNarration();
+  }
+
+  async function fetchNarration() {
+    try {
+      const res = await fetch('/api/get-narration?playId=' + encodeURIComponent(PLAY_ID));
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.generated || !Array.isArray(data.narration)) {
+        renderNarrationPending();
+        return;
+      }
+      narrationByPhase = {};
+      data.narration.forEach((p) => { narrationByPhase[p.phaseNumber] = p; });
+      renderNarrationControls();
+    } catch (e) {
+      // Narration is additive -- a fetch failure should never break the
+      // diagram/sidebar view a coach or parent actually came here for.
+    }
+  }
+
+  function renderNarrationPending() {
+    document.querySelectorAll('.phase-diagram').forEach((el) => {
+      const bar = document.createElement('div');
+      bar.className = 'narration-bar';
+      bar.innerHTML = '<span class="narration-pending">Narration is still being generated -- check back shortly.</span>';
+      el.appendChild(bar);
+    });
+  }
+
+  function renderNarrationControls() {
+    document.querySelectorAll('.phase-diagram').forEach((el) => {
+      const n = parseInt(el.id.replace('pd-', ''), 10);
+      const entry = narrationByPhase[n];
+      const bar = document.createElement('div');
+      bar.className = 'narration-bar';
+      if (entry && entry.audioUrl) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'narration-play-btn';
+        btn.dataset.phase = String(n);
+        btn.textContent = '▶ Play Narration';
+        btn.addEventListener('click', () => toggleNarration(n));
+        bar.appendChild(btn);
+      } else {
+        bar.innerHTML = '<span class="narration-unavailable">Narration unavailable for this phase.</span>';
+      }
+      el.appendChild(bar);
+    });
+  }
+
+  function ensureAudioEl() {
+    if (!audioEl) {
+      audioEl = new Audio();
+      audioEl.addEventListener('timeupdate', onNarrationTimeUpdate);
+      audioEl.addEventListener('ended', () => {
+        narrationIsPlaying = false;
+        clearPlayerHighlight();
+        updateNarrationButtons();
+      });
+    }
+    return audioEl;
+  }
+
+  function fadeVolume(el, from, to, ms) {
+    const steps = 10;
+    const stepMs = Math.max(1, Math.round(ms / steps));
+    let i = 0;
+    el.volume = from;
+    const timer = setInterval(() => {
+      i++;
+      el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+      if (i >= steps) clearInterval(timer);
+    }, stepMs);
+  }
+
+  function toggleNarration(n) {
+    const entry = narrationByPhase && narrationByPhase[n];
+    if (!entry || !entry.audioUrl) return;
+    const el = ensureAudioEl();
+    if (narrationIsPlaying && currentPhaseNum === n) {
+      fadeVolume(el, el.volume, 0, 220);
+      setTimeout(() => el.pause(), 230);
+      narrationIsPlaying = false;
+    } else {
+      if (n !== currentPhaseNum) switchPhase(n);
+      startPhaseAudio(n, el.src === entry.audioUrl);
+    }
+    updateNarrationButtons();
+  }
+
+  function startPhaseAudio(n, alreadyLoaded) {
+    const entry = narrationByPhase[n];
+    const el = ensureAudioEl();
+    if (!alreadyLoaded) {
+      el.src = entry.audioUrl;
+      el.currentTime = 0;
+    }
+    el.volume = 0;
+    el.play().catch(() => {});
+    fadeVolume(el, 0, 1, 220);
+    narrationIsPlaying = true;
+  }
+
+  // Called on every phase-tab switch. If narration was actively playing,
+  // cross-fades into the new phase's track (fade the old one out, swap
+  // source, fade the new one in) instead of a hard cut or letting the old
+  // phase's audio keep playing under the new diagram.
+  function onPhaseSwitchedForNarration(n) {
+    clearPlayerHighlight();
+    if (!narrationIsPlaying) {
+      updateNarrationButtons();
+      return;
+    }
+    const el = ensureAudioEl();
+    const entry = narrationByPhase && narrationByPhase[n];
+    if (!entry || !entry.audioUrl) {
+      fadeVolume(el, el.volume, 0, 200);
+      setTimeout(() => el.pause(), 210);
+      narrationIsPlaying = false;
+      updateNarrationButtons();
+      return;
+    }
+    fadeVolume(el, el.volume, 0, 200);
+    setTimeout(() => {
+      el.src = entry.audioUrl;
+      el.currentTime = 0;
+      el.volume = 0;
+      el.play().catch(() => {});
+      fadeVolume(el, 0, 1, 200);
+    }, 210);
+    updateNarrationButtons();
+  }
+
+  function updateNarrationButtons() {
+    document.querySelectorAll('.narration-play-btn').forEach((btn) => {
+      const n = parseInt(btn.dataset.phase, 10);
+      const playingThis = narrationIsPlaying && n === currentPhaseNum;
+      btn.textContent = playingThis ? '⏸ Pause Narration' : '▶ Play Narration';
+    });
+  }
+
+  function onNarrationTimeUpdate() {
+    if (!narrationByPhase || !narrationByPhase[currentPhaseNum]) return;
+    const timings = narrationByPhase[currentPhaseNum].timings || [];
+    const t = audioEl.currentTime;
+    const active = timings.find((seg) => seg.player && t >= seg.startTime && t < seg.endTime);
+    highlightPlayer(active ? active.player : null);
+  }
+
+  function highlightPlayer(playerNum) {
+    document.querySelectorAll('.pc').forEach((el) => {
+      if (playerNum && el.getAttribute('data-player') === String(playerNum)) {
+        el.classList.add('narrating-pulse');
+      } else {
+        el.classList.remove('narrating-pulse');
+      }
+    });
+  }
+
+  function clearPlayerHighlight() {
+    document.querySelectorAll('.pc.narrating-pulse').forEach((el) => el.classList.remove('narrating-pulse'));
+  }
 </script>
 
 </body>
