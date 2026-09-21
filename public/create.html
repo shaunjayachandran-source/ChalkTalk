@@ -197,6 +197,22 @@
   }
 
   #builder-form.hidden, #preview-section.hidden { display: none; }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+  }
+  .checkbox-row label {
+    margin: 0;
+    font-weight: 500;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -252,6 +268,14 @@
     <label><input type="radio" name="level" value="prep"> Prep</label>
     <label><input type="radio" name="level" value="college"> College</label>
     <label><input type="radio" name="level" value="pro"> Pro</label>
+  </div>
+
+  <div id="narration-row-wrap" style="display:none;">
+    <div class="checkbox-row">
+      <input type="checkbox" id="narrationEnabled">
+      <label for="narrationEnabled">Generate spoken narration for this play</label>
+    </div>
+    <div style="color: var(--gray); font-size: 12px; margin-top: 6px; margin-left: 24px;">Adds a short, number-based audio track per phase (e.g. "the 1 passes to the 2") once the play is published -- off by default to limit generation cost. Not available for Youth-level plays.</div>
   </div>
 
   <label for="phaseCount">Number of Phases (optional)</label>
@@ -378,6 +402,8 @@
   const categorySelect = document.getElementById('category');
   const subCategoryRow = document.getElementById('sub-category-row');
   const subCategorySelect = document.getElementById('sub-category');
+  const narrationRowWrap = document.getElementById('narration-row-wrap');
+  const narrationEnabledCheckbox = document.getElementById('narrationEnabled');
 
   // The basket-position (up/down) choice only makes sense for half court --
   // full court always shows both baskets. Hide it when Full Court is picked.
@@ -389,6 +415,26 @@
     el.addEventListener('change', updateOrientationVisibility)
   );
   updateOrientationVisibility();
+
+  // Narration (Item 2) is gated to "anything that isn't youth" -- hide (and
+  // uncheck) the opt-in toggle whenever Youth is the selected level, so
+  // there's no way to submit narrationEnabled=true for a youth play from
+  // this form. generate-narration.js re-checks this server-side too (the
+  // client-side hide is just so the option isn't dangled in front of a
+  // coach for a level it will never apply to).
+  function updateNarrationVisibility() {
+    const level = document.querySelector('input[name="level"]:checked').value;
+    if (level === 'youth') {
+      narrationRowWrap.style.display = 'none';
+      narrationEnabledCheckbox.checked = false;
+    } else {
+      narrationRowWrap.style.display = 'block';
+    }
+  }
+  document.querySelectorAll('input[name="level"]').forEach((el) =>
+    el.addEventListener('change', updateNarrationVisibility)
+  );
+  updateNarrationVisibility();
 
   // Sub-category (Man / Zone / Press) is only meaningful for Offense and
   // Defense -- SLOB/BLOB/Special stay flat grids on the public pages, so we
@@ -845,6 +891,11 @@
           brief: currentBrief,
           category: categoryValue,
           subCategory: requiresSubCategory ? subCategorySelect.value : null,
+          // Narration (Item 2): only meaningful for non-youth levels -- the
+          // checkbox itself is hidden/unchecked for Youth by
+          // updateNarrationVisibility() above, so this is a straight read
+          // of the current UI state, not a second gate.
+          narrationEnabled: narrationEnabledCheckbox.checked,
         }),
       });
 
