@@ -26,7 +26,7 @@
  * generated/<program>/<slug>.html path.
  *
  * Body (JSON):
- *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string }
+ *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string, narrationEnabled?: boolean }
  *
  *   category is one of PLAY_CATEGORIES below (offense/defense/slob/blob/special).
  *   It powers the public team directory page (public/team.html) so plays can
@@ -40,6 +40,13 @@
  *   deliberately no inferred/"Other" fallback: a coach must confirm this at
  *   build time. Ignored (stored as null) for slob/blob/special, which stay
  *   flat grids with no sub-grouping.
+ *
+ *   narrationEnabled (Item 2, auditory narration) is the coach's per-play
+ *   opt-in, stored as plays.narration_enabled -- read later by
+ *   generate-narration.js when a publish action fires. Forced to false for
+ *   a youth-level play regardless of what's sent, mirroring the same
+ *   "anything that isn't youth" gate generate-narration.js enforces
+ *   server-side -- defense in depth, not the only place this is checked.
  *
  * Response (JSON):
  *   { url: string }   -- public Blob URL of the generated playbook
@@ -164,7 +171,7 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
 - Marker/gradient IDs: every phase must use its own unique IDs, prefixed with the phase number, so multiple phases' SVGs sitting in the same page never collide (e.g. phase 2's gold arrow marker id="p2-au"). Use these two-letter color codes for arrow/gradient markers: au=gold, ag=green, ab=blue, ar=red, ap=purple, at=teal -- matching the player's stroke color for that arrow. Example: phase 3's blue player's dribble-path arrowhead is id="p3-ab".
 - Named position anchors: use ONLY the table below matching this phase's actual court type (half vs full) -- given at the top of this prompt as "Court type: half" or "Court type: full". These two tables use DIFFERENT coordinate systems (different viewBox, different court-image placement) even where the cx values look identical -- pulling a cy value from the wrong table is a real, confirmed bug class (a full-court "defensive basket" cy is only valid inside the full-court rectangle, and will render off the visible court entirely if used on a half-court play, or vice versa). Never mix the two tables within one phase.
-- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:  
+- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
   Elbows: right cx=313, left cx=207 (elbow-level cy=285 for DOWN, cy=222 for UP).
   Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=152 for UP).
   Top slots (guard spots above the arc, e.g. wings relocating out of a corner): cy=205 for DOWN, cy=302 for UP.
@@ -198,7 +205,7 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { programId, brief, category, subCategory } = body;
+  const { programId, brief, category, subCategory, narrationEnabled } = body;
 
   if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
     return sendJson(res, { error: "Missing or invalid brief" }, 400);
@@ -222,6 +229,13 @@ export default async function handler(req, res) {
     }
     resolvedSubCategory = subCategory;
   }
+
+  // Narration (Item 2) opt-in: forced false for youth regardless of what
+  // the client sent, mirroring the same "anything that isn't youth" gate
+  // generate-narration.js enforces again server-side when a publish
+  // action later fires -- this is a second, independent check, not the
+  // only one.
+  const resolvedNarrationEnabled = !!narrationEnabled && brief.level !== "youth";
 
   const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
@@ -274,6 +288,7 @@ export default async function handler(req, res) {
             phase_count: brief.phases.length,
             court_type: brief.courtType || "half",
             status: initialStatus,
+            narration_enabled: resolvedNarrationEnabled,
             created_by: user.id,
             updated_at: new Date().toISOString(),
           },
@@ -366,7 +381,7 @@ export default async function handler(req, res) {
   if (diagramWarnings.length) {
     console.warn(`[generate-playbook] play ${playRow.id} has ${diagramWarnings.length} diagram validation warning(s).`);
   }
- 
+
   return sendJson(res, {
     url: blobResult.url,
     playId: playRow.id,
@@ -520,7 +535,7 @@ ${JSON.stringify(phase, null, 2)}`;
   }
 
   const diagramSvg = stripOuterSvgWrapper(parsed.diagramSvg) || "";
- 
+
   // Deterministic check, not another LLM call -- see
   // api/_lib/validate-diagram.js and claude/known-failure-modes.md.
   // Non-blocking for now (log + surface, don't fail the request): a false
@@ -531,7 +546,7 @@ ${JSON.stringify(phase, null, 2)}`;
   if (!diagramOk) {
     console.warn(`[generate-playbook] phase ${phase.phaseNumber} diagram validation found ${diagramIssues.length} issue(s):`, diagramIssues);
   }
- 
+
   return {
     phaseNumber: phase.phaseNumber,
     phaseName: phase.phaseName,
