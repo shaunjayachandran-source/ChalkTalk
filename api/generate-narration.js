@@ -88,10 +88,21 @@ export default async function handler(req, res) {
   // reason generate-playbook.js already knows programId from its own
   // request body; this endpoint only gets playId, so it looks the rest
   // up itself).
+  //
+  // NOTE: there is no `plays.level` column -- generate-playbook.js never
+  // writes one (its upsert only sets program_id/slug/title/play_type/
+  // sub_category/phase_count/court_type/status/narration_enabled/
+  // created_by/updated_at), and dashboard.html's own plays query never
+  // reads one either. Coaching level only ever lives inside brief_json
+  // (written by generate-brief.js as part of the brief). An earlier
+  // version of this file selected a bare `level` column here, which
+  // would either error (column does not exist) or silently return null
+  // forever, defeating the youth-exclusion gate below. Read it out of
+  // brief_json instead, below.
   const supabaseAdmin = getSupabase();
   const { data: play, error: playErr } = await supabaseAdmin
     .from("plays")
-    .select("id, program_id, level, status, narration_enabled, brief_json")
+    .select("id, program_id, status, narration_enabled, brief_json")
     .eq("id", playId)
     .maybeSingle();
 
@@ -118,7 +129,8 @@ export default async function handler(req, res) {
   if (!play.narration_enabled) {
     return sendJson(res, { playId, skipped: true, reason: "narration_disabled" });
   }
-  if (play.level === "youth") {
+  const level = play.brief_json && typeof play.brief_json.level === "string" ? play.brief_json.level : null;
+  if (level === "youth") {
     return sendJson(res, { playId, skipped: true, reason: "youth_level_excluded" });
   }
   const phases = play.brief_json && Array.isArray(play.brief_json.phases) ? play.brief_json.phases : null;
