@@ -11,3 +11,4 @@ node_modules/
 # should never be committed (harmless content, but repo hygiene).
 test_payload.json
 response_output.json
+.env*
