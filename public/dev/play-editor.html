@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+[Resource from GitHub at repo://shaunjayachandran-source/ChalkTalk/sha/a2f9cf87826b56748b2ed323fbc434e15f8b93cb/contents/public/dev/play-editor.html] <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -503,6 +503,12 @@ function resolvePhaseStartPositions(phaseIndex) {
   });
   if (phaseIndex === 0) return resolved; // no prior phase to inherit from
   const prevPhase = PLAY.phases[phaseIndex - 1];
+  // Recursive carry-over for players who own no action in prevPhase (see the
+  // else-branch below) - need to know where they were ACTUALLY left at the
+  // end of the previous phase, not just what this phase's own JSON claims.
+  // Cheap enough: phase counts are small (single digits) and this is pure/
+  // deterministic, not called in a hot loop.
+  const prevResolved = resolvePhaseStartPositions(phaseIndex - 1);
   PLAY.players.forEach(pl => {
     const primaryAction = (prevPhase.actions || []).find(a =>
       a.playerId === pl.id && a.style !== 'option' && a.endpoint
@@ -514,6 +520,25 @@ function resolvePhaseStartPositions(phaseIndex) {
         diagnostics.push(`DRIFT WARNING: phase "${phase.id}" authored p${pl.number} at (${authored.cx},${authored.cy}) but phase "${prevPhase.id}"'s primary action endpoint says (${derived.cx},${derived.cy}). Renderer uses the derived value - authored value ignored.`);
       }
       resolved[pl.id] = derived;
+    } else {
+      // No owned action for this player in the previous phase - the ONLY
+      // legitimate reason their position could differ between phases is a
+      // real action explaining the move, so with none, continuity means
+      // "stayed exactly where they were." Carry the previous phase's
+      // resolved position forward instead of trusting this phase's authored
+      // coordinates blindly - this is the fix for the real bug found Sep 22,
+      // 2026: a spacer (no action) silently "teleported" between phases
+      // because their authored position in the later phase didn't match
+      // where they'd actually been left, and nothing caught it since only
+      // action-owning players got a continuity check before this fix.
+      const carried = prevResolved[pl.id];
+      const authored = resolved[pl.id];
+      if (carried && authored && (Math.abs(authored.cx - carried.cx) > 0.5 || Math.abs(authored.cy - carried.cy) > 0.5)) {
+        diagnostics.push(`DRIFT WARNING (spacer): phase "${phase.id}" authored p${pl.number} at (${authored.cx},${authored.cy}) with no owned action in phase "${prevPhase.id}" to explain the move. Carrying forward their actual position from phase "${prevPhase.id}" (${carried.cx},${carried.cy}) instead - the renderer uses the carried value, authored value ignored. Fix the source data: either add a real action for this player if they're truly supposed to relocate, or correct phase "${phase.id}"'s authored coordinates to match.`);
+        resolved[pl.id] = carried;
+      } else if (carried && !authored) {
+        resolved[pl.id] = carried;
+      }
     }
   });
   return resolved;
