@@ -29,6 +29,7 @@ import {
 } from "./_lib/github-repo.js";
 import { validateAdminToken } from "./_lib/validate-admin.js";
 import { provisionProgram } from "./_lib/provision-program.js";
+import { normalizePlan } from "./_lib/plans.js";
 
 const PENDING_BRANCH = "programs-pending";
 
@@ -105,6 +106,9 @@ export default async function handler(req, res) {
         colorPrimary: programConfig.color_primary,
         colorSecondary: programConfig.color_secondary,
         crestLabel: programConfig.crest_label,
+        // Re-validated: the pending JSON is stored data, and requests saved
+        // before plan capture existed have no plan at all.
+        plan: normalizePlan(programConfig.plan),
       });
       return sendJson(res, 200, {
         ok: true,
