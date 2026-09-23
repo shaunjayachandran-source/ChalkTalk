@@ -29,15 +29,23 @@
  *     regenerate or reinterpret the play, only re-voices what's already
  *     there for speech.
  *
- * DELIBERATE PILOT GATE (added Sep 23, 2026, per Shaun's explicit
- * request): this only actually generates narration for programs in
- * NARRATION_PILOT_PROGRAM_SLUGS below. This is a genuine, code-enforced
- * restriction, not just an operational note -- same pattern as
- * PILOT_PROGRAM_SLUGS in api/invite-viewer.js (Dartmouth-only
- * player/parent login gate). It runs BEFORE the narration_enabled/level
- * checks below, so even if a play on a non-pilot program somehow has
- * narration_enabled=true, this endpoint still no-ops for it. Widen or
- * remove this array once the St. Mary's pilot proves out.
+ * PLAN-GATED (Phase 2, Prompt 8, changed 2026-09-23): this used to be a
+ * hardcoded single-program allowlist (NARRATION_PILOT_PROGRAM_SLUGS =
+ * ["st-marys-saints-calgary"], per Shaun's Sep 23, 2026 rollout choice).
+ * It's now a real plan check -- getPlanLimits(program.plan).narrationIncluded
+ * -- so narration works for every program on a narration-included plan, not
+ * one hardcoded slug. St. Mary's Saints Calgary keeps working because its
+ * plan (college_d1, per the 2026-09-23 backfill) resolves
+ * narrationIncluded: true -- no special case needed.
+ *
+ * DISCOVERY (found while wiring this gate in, flagged for Shaun): the
+ * pricing docs and the earlier plan-schema migration's comments assumed
+ * DARTMOUTH was the program with live narration -- that was wrong. The
+ * hardcoded slug this replaced was actually "st-marys-saints-calgary", a
+ * 9th live program never mentioned in the original inventory of 8.
+ * Dartmouth's real live pilot is the player/parent LOGIN feature
+ * (api/invite-viewer.js's PILOT_PROGRAM_SLUGS), a separate feature
+ * entirely, already handled in Prompt 7.
  *
  * Body (JSON): { playId: string }
  *
@@ -50,16 +58,12 @@
 import { validateCoachSession } from "./_lib/validate-session.js";
 import { getSupabase } from "./_lib/knowledge-base.js";
 import { put } from "@vercel/blob";
+import { getPlanLimits } from "./_lib/plan-limits.js";
 
 export const config = { maxDuration: 180 };
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-
-// St. Mary's-only pilot, per Shaun's explicit Sep 23, 2026 rollout choice.
-// Real confirmed slug (not guessed): "st-marys-saints-calgary". Widen this
-// list (or delete the check below) once the pilot proves out.
-const NARRATION_PILOT_PROGRAM_SLUGS = ["st-marys-saints-calgary"];
 
 // ElevenLabs "with timestamps" endpoint -- returns audio AND
 // character-level alignment in one call, which is what makes
@@ -133,14 +137,14 @@ export default async function handler(req, res) {
     return sendJson(res, { error: authResult.error }, authResult.status);
   }
 
-  // Pilot gate (Sep 23, 2026): confirm this play's program is actually in
-  // the narration pilot BEFORE any of the defensive gates below. A
-  // program not on this list gets the same skipped:true shape as every
-  // other gate -- being gated out here is an expected outcome, not an
-  // error, for the vast majority of programs while this stays a pilot.
+  // Plan gate (Phase 2, Prompt 8): confirm this play's program is actually
+  // on a plan that includes narration BEFORE any of the defensive gates
+  // below. A program on a non-narration plan gets the same skipped:true
+  // shape as every other gate -- being gated out here is an expected
+  // outcome, not an error, for most programs.
   const { data: programRow, error: programErr } = await supabaseAdmin
     .from("programs")
-    .select("slug")
+    .select("slug, plan")
     .eq("id", play.program_id)
     .maybeSingle();
 
@@ -148,8 +152,9 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Could not resolve this play's program" }, 500);
   }
 
-  if (!NARRATION_PILOT_PROGRAM_SLUGS.includes(programRow.slug)) {
-    return sendJson(res, { playId, skipped: true, reason: "program_not_in_narration_pilot" });
+  const planLimits = getPlanLimits(programRow.plan);
+  if (!planLimits.narrationIncluded) {
+    return sendJson(res, { playId, skipped: true, reason: "narration_not_included_in_plan" });
   }
 
   // Defensive gates -- this endpoint is only ever CALLED right after a

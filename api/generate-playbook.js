@@ -49,6 +49,7 @@
 import { put } from "@vercel/blob";
 import { validateCoachSession } from "./_lib/validate-session.js";
 import { validatePhaseOutput } from "./_lib/validate-diagram.js";
+import { getPlanLimits } from "./_lib/plan-limits.js";
 
 export const config = { maxDuration: 180 };
 
@@ -243,6 +244,54 @@ export default async function handler(req, res) {
     .eq("coach_id", user.id)
     .maybeSingle();
   const initialStatus = coachRow && coachRow.can_publish ? "published" : "in_review";
+
+  // PLAYBOOK-CAP CHECK (Phase 2, Prompt 8, added 2026-09-23, decision D5:
+  // "active" means published and not hidden). Counts existing plays for
+  // this program only when the play about to be created is a genuinely
+  // NEW slug -- re-running a build for an existing play (the upsert
+  // below, onConflict program_id,slug) updates that row in place and must
+  // never count as a new set. KNOWN LOOPHOLE, per D5's own definition:
+  // an in_review play (a coach without can_publish building one) doesn't
+  // count toward the cap until it's actually published, since D5 counts
+  // published-and-not-hidden only -- flagging this rather than silently
+  // tightening D5's definition without checking with Shaun first.
+  const { data: programPlanRow, error: programPlanErr } = await supabase
+    .from("programs")
+    .select("plan")
+    .eq("id", programId)
+    .maybeSingle();
+  if (programPlanErr) {
+    return sendJson(res, { error: `Could not resolve this program's plan: ${programPlanErr.message}` }, 500);
+  }
+  const planLimits = getPlanLimits(programPlanRow ? programPlanRow.plan : null);
+  if (planLimits.playbookCap !== null) {
+    const { data: existingPlay } = await supabase
+      .from("plays")
+      .select("id")
+      .eq("program_id", programId)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!existingPlay) {
+      const { count, error: countErr } = await supabase
+        .from("plays")
+        .select("id", { count: "exact", head: true })
+        .eq("program_id", programId)
+        .eq("status", "published")
+        .eq("hidden", false);
+      if (countErr) {
+        return sendJson(res, { error: `Could not check current playbook count: ${countErr.message}` }, 500);
+      }
+      if ((count || 0) >= planLimits.playbookCap) {
+        return sendJson(
+          res,
+          {
+            error: `This program's plan allows up to ${planLimits.playbookCap} active playbook set(s), and it's already at that limit. Ask about upgrading to build more.`,
+          },
+          403
+        );
+      }
+    }
+  }
 
   // Everything in this handler has to finish inside Vercel's 60s function
   // limit. The per-phase Claude calls (below) are the slow part and already
