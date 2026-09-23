@@ -59,7 +59,7 @@ and 110 vertically. A perimeter player meant to be clearly beyond the line
 (a shooter, a guard in a 4-out/5-out spacing alignment) should sit
 noticeably outside that ellipse, not just barely past it -- use the Slot
 and Deep corner anchors below for that, not Wings or an invented spot.
- 
+
 FORMATION GUIDANCE -- 4-out / 5-out alignments (spread, motion,
 dribble-drive-style spacing with players spread around the perimeter and
 zero or one player inside): the four perimeter spots are TWO SLOT
@@ -72,31 +72,35 @@ position between the corner and the slot is actually wanted. Getting this
 distinction right matters: a 4-out set with two players parked at Wings
 instead of Slot reads as noticeably tighter/closer to the rim than a real
 4-out spacing should look.
- 
+
 DOWN (basket at bottom):
 - Basket is at approximately x=260, y=375
 - Elbows: left x=207 y=285, right x=313 y=285
 - Blocks: left x=207 y=338, right x=313 y=338
+- Dunker spot (finishing/rim-running spot along the baseline, between the Block and the basket -- closer to the rim than Block; this is a DIFFERENT spot from Block, never reuse the Block coordinate for it): left x=207 y=365, right x=313 y=365
 - Screen spot outside the block (baseline/flex screen standing position -- just outside the block toward the sideline, NOT the same spot as the Block anchor itself): left x=182 y=345, right x=338 y=345
+- Inbounder (BLOB out-of-bounds passer -- stands OUT OF BOUNDS behind the baseline, lined up with where the lane/key lines would extend past the baseline if they continued out of bounds; NEVER place an inbounder directly under or behind the basket itself -- that is a confirmed real bug this anchor exists to prevent. Pick whichever side the play's alignment calls for): left x=207 y=402, right x=313 y=402
 - Short corner: left x=132 y=385, right x=388 y=385
 - Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=250, right x=430 y=250
 - Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=200, right x=385 y=200
 - Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=355, right x=462 y=355
 - Center top (above the arc): x=260 y=185
 - Free-throw line center (default start for a player who will screen at either elbow): x=260 y=285
- 
+
 UP (basket at top -- mirrored around the court rectangle's real center, NOT simply 420 minus the DOWN value; the rectangle spans y=110-397, so the correct mirror is y_up = 507 - y_down):
 - Basket is at approximately x=260, y=132
 - Elbows: left x=207 y=222, right x=313 y=222
 - Blocks: left x=207 y=169, right x=313 y=169
+- Dunker spot (finishing/rim-running spot along the baseline, between the Block and the basket -- closer to the rim than Block; this is a DIFFERENT spot from Block, never reuse the Block coordinate for it): left x=207 y=142, right x=313 y=142
 - Screen spot outside the block (baseline/flex screen standing position -- just outside the block toward the sideline, NOT the same spot as the Block anchor itself): left x=182 y=162, right x=338 y=162
+- Inbounder (BLOB out-of-bounds passer -- stands OUT OF BOUNDS behind the baseline, lined up with where the lane/key lines would extend past the baseline if they continued out of bounds; NEVER place an inbounder directly under or behind the basket itself -- that is a confirmed real bug this anchor exists to prevent. Pick whichever side the play's alignment calls for): left x=207 y=105, right x=313 y=105
 - Short corner: left x=132 y=122, right x=388 y=122
 - Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=257, right x=430 y=257
 - Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=307, right x=385 y=307
 - Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=152, right x=462 y=152
 - Center top (below the arc, toward mid-court): x=260 y=322
 - Free-throw line center (default start for a player who will screen at either elbow): x=260 y=222
- 
+
 Court spans roughly x=15 to x=504, y=110 to y=397 either way.
 
 For full-court plays (viewBox 0 0 520 500), basket position doesn't apply (both baskets are always shown) -- defensive basket is near y=28, half-court line is y=252, attacking basket is near y=472. Scale positions proportionally.
@@ -132,7 +136,9 @@ Infer reasonable court positions even if the coach's description is imprecise �
 IMPORTANT: Every phase must include ALL FIVE offensive players (numbers 1-5), even if the coach only described the action for one or two of them. For players not mentioned in the coach's description, place them in sensible, realistic supporting positions for that phase (e.g. spacing the floor at the opposite wing, corner, or top, or holding a natural help/safety position) with startX/Y equal to endX/Y (they don't move) and an action like "Holds floor spacing on the [location]" or "Maintains position as a safety valve." Never omit a player just because the coach didn't mention them — a real possession always has 5 players on the court.
 
 CONTINUITY RULE (critical): a player's position cannot silently teleport between phases. For phase 2 onward, every player's startX/startY MUST exactly equal that same player's endX/endY from the immediately preceding phase — inherit their last known position, never re-guess it. Only phase 1 may set arbitrary starting positions. If a player's narrative changes in a later phase (e.g. a new cut, screen, or reversal), that phase's action/keyAction text must be consistent with wherever their carried-forward position actually is — never describe a movement that contradicts the position they were already left in.
- 
+
+BLOB / INBOUNDS-PLAY RULE (critical): when a phase's action has a player taking the ball out of bounds to inbound it (a baseline out-of-bounds/BLOB play), that player's phase-1 startX/startY MUST be the Inbounder anchor above (left or right, whichever side the alignment calls for) — NEVER place them "under the basket" or anywhere else along the baseline. This is a confirmed, previously-real bug: an inbounder standing directly behind/under the rim is not a legal or realistic inbounds spot, and every other player's box/alignment position (elbows, blocks, dunker spot, etc.) should be set relative to that Inbounder anchor, not to the basket itself.
+
 SCREENER POSITIONING RULE (critical): when a player's role in phase 1 is to set a screen at an elbow later in the play (rather than starting locked to a specific side), place their phase-1 startX/startY at the Free-throw line center anchor above (x=260, y=285 DOWN / y=135 UP) rather than guessing left or right — this lets them move cleanly to whichever elbow the play actually needs. When that player then sets the screen, their endX/endY for that phase MUST be the elbow on the SAME SIDE OF THE COURT AS THE BALL at that moment: compare the ball-handler's x position in that phase to court-center x=260 — if the ball-handler's x is less than 260, the screen happens at the LEFT elbow (x=207); if the ball-handler's x is 260 or greater, it happens at the RIGHT elbow (x=313). Never place a screen at the elbow opposite the ball. State this explicitly in that phase's action text (e.g. "Sets a screen at the ball-side elbow").
 
 FLEX CUT RULE (critical -- this is a real basketball structure rule, not a style preference; verified directly against real flex-offense diagrams, read image-by-image rather than inferred): the flex continuity's base formation is TWO SLOT positions (the two guards running the ball) and TWO WING positions (the two remaining perimeter players) -- NOT two Deep corners, and NOT a 4-out spread shape. The fifth player (the traveling screener/cutter role) works out of the lane area, never fixed on the block or in a corner as a starting spot.
@@ -410,9 +416,9 @@ export default async function handler(req, res) {
       .join("\n");
     userContent.push({ type: "text", text: kbBlock });
   }
- 
+
   userContent.push({ type: "text", text: textPrompt });
- 
+
   let anthropicRes;
   const callStart = Date.now();
   try {
@@ -491,7 +497,7 @@ export default async function handler(req, res) {
   // we already know what was requested, no need to rely on the model
   // faithfully including it in its JSON output.
   brief.basketOrientation = courtType === "half" ? resolvedOrientation : undefined;
- 
+
   // Provenance flag for the UI/downstream code -- lets a coach (or a
   // future "verified" badge) see whether this brief was grounded in a
   // real knowledge base entry or fell back to general model knowledge.
