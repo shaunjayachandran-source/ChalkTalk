@@ -52,9 +52,10 @@ function getServiceClient() {
  * @param {string} [opts.colorPrimary] -- "#rrggbb"
  * @param {string} [opts.colorSecondary] -- "#rrggbb"
  * @param {string} [opts.crestLabel]
+ * @param {string} [opts.plan] -- defaults "trial"; never inserted as null. Requires the programs.plan column (supabase/migrations/program-plan-capture.sql).
  * @returns {{ programId: string|null, coachInvited: boolean, coachError?: string, skipped?: boolean }}
  */
-export async function provisionProgram({ slug, name, coachEmail, coachName, colorPrimary, colorSecondary, crestLabel }) {
+export async function provisionProgram({ slug, name, coachEmail, coachName, colorPrimary, colorSecondary, crestLabel, plan = "trial" }) {
   if (!coachEmail) {
     // No coach, no program row -- programs.coach_id is NOT NULL. Only the
     // static hub page exists until a coach email is provided (via a
@@ -98,6 +99,7 @@ export async function provisionProgram({ slug, name, coachEmail, coachName, colo
       crest_label: crestLabel || null,
       color_primary: colorPrimary || null,
       color_secondary: colorSecondary || null,
+      plan: plan || "trial",
     })
     .select("id")
     .single();

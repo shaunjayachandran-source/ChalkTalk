@@ -30,7 +30,8 @@
  *   {
  *     slug, title, team_name, team_sub, league, coach_line, coach_email,
  *     tagline, sign_accent, hero_line, primary_color ("#rrggbb"), initials,
- *     beta_status ("beta"|"live"), formSecret?
+ *     beta_status ("beta"|"live"), plan? (see api/_lib/plans.js; defaults "trial"),
+ *     formSecret?
  *   }
  *
  * Deliberately does NOT accept hand-written crest_html/hero_art/accent_*
@@ -51,6 +52,7 @@ import {
 } from "./_lib/github-repo.js";
 import { validateAdminToken } from "./_lib/validate-admin.js";
 import { provisionProgram } from "./_lib/provision-program.js";
+import { normalizePlan } from "./_lib/plans.js";
 
 const PENDING_BRANCH = "programs-pending";
 const REQUIRED_FIELDS = ["slug", "title", "team_name"];
@@ -91,6 +93,7 @@ function buildProgramConfig(body) {
   const secondaryColor = shade(primaryColor, -60);
   const initials = String(body.initials || teamName.slice(0, 3)).trim().toUpperCase().slice(0, 4);
   const betaStatus = body.beta_status === "live" ? "live" : "beta";
+  const plan = normalizePlan(body.plan);
   const coachName = String(body.coach_line || "").trim();
   const coachEmail = String(body.coach_email || "").trim();
 
@@ -122,6 +125,9 @@ function buildProgramConfig(body) {
     hero_mode: "art",
     tagline: title,
     beta_status: betaStatus,
+    // Carried in the JSON so a Google-Form plan survives the programs-pending
+    // round trip to approve-program.js.
+    plan,
   };
 }
 
@@ -191,6 +197,7 @@ export default async function handler(req, res) {
           colorPrimary: programConfig.color_primary,
           colorSecondary: programConfig.color_secondary,
           crestLabel: programConfig.crest_label,
+          plan: programConfig.plan,
         });
       } catch (provisionErr) {
         console.error("[create-program] provisioning failed", provisionErr.message);
