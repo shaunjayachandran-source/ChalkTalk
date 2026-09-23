@@ -103,6 +103,16 @@
         </div>
       </div>
 
+      <label>Plan (recorded only &mdash; nothing is enforced or billed yet)</label>
+      <select name="plan">
+        <option value="trial" selected>Trial / Unbilled (internal use)</option>
+        <option value="youth">Youth / Middle School ($199/yr)</option>
+        <option value="club">Club / AAU Circuit ($999-1,500/yr)</option>
+        <option value="hs">High School Varsity ($499-799/yr)</option>
+        <option value="college">College D2/D3/JuCo ($1,500-2,500/yr)</option>
+        <option value="college_d1">College D1 High-Major ($3,500/yr)</option>
+      </select>
+
       <button type="submit" id="submitBtn">Create Program</button>
       <div id="createMsg"></div>
     </form>
@@ -225,7 +235,7 @@
         el.className = 'pending-item';
         el.innerHTML =
           '<div class="t">' + escapeHtml(p.title || p.slug) + '</div>' +
-          '<div class="meta">slug: ' + escapeHtml(p.slug) + ' &middot; status: ' + escapeHtml(p.beta_status || 'beta') + '</div>' +
+          '<div class="meta">slug: ' + escapeHtml(p.slug) + ' &middot; status: ' + escapeHtml(p.beta_status || 'beta') + ' &middot; plan: ' + escapeHtml(p.plan || 'trial') + '</div>' +
           '<div class="actions">' +
             '<button class="approve" data-slug="' + escapeHtml(p.slug) + '">Approve</button>' +
             '<button class="danger reject" data-slug="' + escapeHtml(p.slug) + '">Reject</button>' +
