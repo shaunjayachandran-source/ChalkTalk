@@ -164,14 +164,16 @@ Since diagramSvg and sidebarHtml are JSON string values, use single quotes (not 
 - Footer caption bar: rect x=32 y=396 width=456 height=14 fill="rgba(0,0,0,.55)", centered text x=260 font-size=10 fill=#f0b429 font-weight=600, format "PHASE NAME - key action" (max ~80 chars, one line).
 - Marker/gradient IDs: every phase must use its own unique IDs, prefixed with the phase number, so multiple phases' SVGs sitting in the same page never collide (e.g. phase 2's gold arrow marker id="p2-au"). Use these two-letter color codes for arrow/gradient markers: au=gold, ag=green, ab=blue, ar=red, ap=purple, at=teal -- matching the player's stroke color for that arrow. Example: phase 3's blue player's dribble-path arrowhead is id="p3-ab".
 - Named position anchors: use ONLY the table below matching this phase's actual court type (half vs full) -- given at the top of this prompt as "Court type: half" or "Court type: full". These two tables use DIFFERENT coordinate systems (different viewBox, different court-image placement) even where the cx values look identical -- pulling a cy value from the wrong table is a real, confirmed bug class (a full-court "defensive basket" cy is only valid inside the full-court rectangle, and will render off the visible court entirely if used on a half-court play, or vice versa). Never mix the two tables within one phase.
-- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:  
+- Named position anchors (half-court) -- use these exactly, do not invent your own coordinates for these spots:
   Elbows: right cx=313, left cx=207 (elbow-level cy=285 for DOWN, cy=222 for UP).
   Corners: right cx=462, left cx=58 (cy=355 for DOWN, cy=152 for UP).
   Top slots (guard spots above the arc, e.g. wings relocating out of a corner): cy=205 for DOWN, cy=302 for UP.
   Center top (ball-handler's start spot at the top of the key): cx=260 (cy=185 for DOWN, cy=322 for UP).
   Free-throw line center (default start for a player who will screen at either elbow): cx=260 (cy=285 for DOWN, cy=222 for UP).
   Blocks (low lane spot right at the key, near the rim): right cx=313, left cx=207 (cy=338 for DOWN, cy=169 for UP).
+  Dunker spot (finishing/rim-running spot along the baseline, between the Block and the basket -- closer to the rim than Block; this is a DIFFERENT spot from Block -- never reuse the Block coordinate for a player placed at the dunker spot): right cx=313, left cx=207 (cy=365 for DOWN, cy=142 for UP).
   Screen spot outside the block (baseline/flex screen standing position -- just outside the block toward the sideline, NOT the same spot as the Block anchor itself): right cx=338, left cx=182 (cy=345 for DOWN, cy=162 for UP).
+  Inbounder (BLOB out-of-bounds passer -- stands OUT OF BOUNDS behind the baseline, lined up with where the lane/key lines would extend past the baseline if they continued out of bounds; NEVER place an inbounder directly under or behind the basket itself -- that is a confirmed real bug this anchor exists to prevent): right cx=313, left cx=207 (cy=402 for DOWN, cy=105 for UP).
   Short corner (between the block and the deep corner, still near the baseline): right cx=388, left cx=132 (cy=385 for DOWN, cy=122 for UP).
   Wings (outside the arc, between the corner and the top of the key -- use only for wing-specific formations like a 1-3-1 or flex, NOT as a stand-in for 4-out/5-out slot spacing): right cx=430, left cx=90 (cy=250 for DOWN, cy=257 for UP).
   Slot (elevated guard spot for a 4-out/5-out alignment, well beyond the arc -- verified against the real 3pt arc, which is an ellipse centered at cx=260 cy=350 DOWN / cy=157 UP with radius ~190 horizontal / ~110 vertical): right cx=385, left cx=135 (cy=200 for DOWN, cy=307 for UP). A 4-out/5-out set's two non-corner perimeter players belong HERE, not at Wings.
@@ -325,7 +327,7 @@ export default async function handler(req, res) {
   if (diagramWarnings.length) {
     console.warn(`[generate-playbook] play ${playRow.id} has ${diagramWarnings.length} diagram validation warning(s).`);
   }
- 
+
   return sendJson(res, {
     url: blobResult.url,
     playId: playRow.id,
@@ -450,7 +452,7 @@ ${JSON.stringify(phase, null, 2)}`;
   }
 
   const diagramSvg = stripOuterSvgWrapper(parsed.diagramSvg) || "";
- 
+
   // Deterministic check, not another LLM call -- see
   // api/_lib/validate-diagram.js and claude/known-failure-modes.md.
   // Non-blocking for now (log + surface, don't fail the request): a false
@@ -461,7 +463,7 @@ ${JSON.stringify(phase, null, 2)}`;
   if (!diagramOk) {
     console.warn(`[generate-playbook] phase ${phase.phaseNumber} diagram validation found ${diagramIssues.length} issue(s):`, diagramIssues);
   }
- 
+
   return {
     phaseNumber: phase.phaseNumber,
     phaseName: phase.phaseName,
