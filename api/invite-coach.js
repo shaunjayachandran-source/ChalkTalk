@@ -41,10 +41,20 @@
  * getting that wrong would either silently fail or need guessing at a
  * policy that was never confirmed. Narrowly bypassing RLS for a write that
  * was already independently authorized above is safer than assuming.
+ *
+ * SEAT-CAP CHECK (Phase 2, Prompt 7, added 2026-09-23): once the
+ * service-role client exists, this also resolves the program's plan via
+ * api/_lib/plan-limits.js and rejects a NET-NEW coach invite once
+ * program_coaches is already at that plan's coachCap. Re-inviting an email
+ * that's already attached to this program (e.g. a typo fix) is exempted --
+ * see the "already on this program" check below -- since that's not a new
+ * seat. coachCap === null (unlimited, e.g. college_d1) skips the check
+ * entirely.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { validateCoachSession } from "./_lib/validate-session.js";
+import { getPlanLimits } from "./_lib/plan-limits.js";
 
 const SUPABASE_URL = "https://dvilirimxnkaghqyoueh.supabase.co";
 
@@ -103,6 +113,51 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error("[invite-coach]", err.message);
     return sendJson(res, 500, { error: "Server misconfiguration" });
+  }
+
+  // Seat-cap check -- see header comment. Runs before the invite fires so
+  // a rejected request never sends an email or touches Supabase Auth.
+  const { data: programRow, error: programPlanErr } = await serviceClient
+    .from("programs")
+    .select("plan")
+    .eq("id", programId)
+    .maybeSingle();
+  if (programPlanErr) {
+    return sendJson(res, 500, { error: `Could not resolve this program's plan: ${programPlanErr.message}` });
+  }
+  const limits = getPlanLimits(programRow ? programRow.plan : null);
+  if (limits.coachCap !== null) {
+    const { data: existingCoach } = await serviceClient
+      .from("coaches")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    let alreadyOnProgram = false;
+    if (existingCoach) {
+      const { data: existingRow } = await serviceClient
+        .from("program_coaches")
+        .select("coach_id")
+        .eq("program_id", programId)
+        .eq("coach_id", existingCoach.id)
+        .maybeSingle();
+      alreadyOnProgram = !!existingRow;
+    }
+
+    if (!alreadyOnProgram) {
+      const { count, error: countErr } = await serviceClient
+        .from("program_coaches")
+        .select("coach_id", { count: "exact", head: true })
+        .eq("program_id", programId);
+      if (countErr) {
+        return sendJson(res, 500, { error: `Could not check current coach count: ${countErr.message}` });
+      }
+      if ((count || 0) >= limits.coachCap) {
+        return sendJson(res, 403, {
+          error: `This program's plan allows up to ${limits.coachCap} coach seat(s), and it's already at that limit. Ask about upgrading to add more coaches.`,
+        });
+      }
+    }
   }
 
   const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email);
