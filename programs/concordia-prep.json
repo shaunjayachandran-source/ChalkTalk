@@ -1,0 +1,22 @@
+{
+  "slug": "concordia-prep",
+  "file_prefix": "concordia-prep",
+  "title": "Concordia Prep",
+  "team_name": "CONCORDIA PREP SAINTS",
+  "team_sub": "IAMM",
+  "hero_line": "undefined",
+  "sign_accent": "Towson, MD",
+  "coach_line": "Head Coach: <b>Tez Vaughan</b>",
+  "coach_name": "Tez Vaughan",
+  "coach_email": "victormartezvaughan@concordiaprepschool.org",
+  "crest_html": "<span>CP</span>",
+  "accent_glow": "rgba(198,32,52,0.35)",
+  "accent_crest": "linear-gradient(160deg,#c62034,#8a0000)",
+  "color_primary": "#c62034",
+  "color_secondary": "#8a0000",
+  "crest_label": "CP",
+  "notes_text": "No plays have been built yet for this program. Pick a section below, or search above &mdash; each card fills in once this staff runs a play through <b>Intake Mode</b> (spoken description, uploaded diagram, or typed notes).",
+  "hero_mode": "art",
+  "tagline": "Concordia Prep",
+  "beta_status": "beta"
+}
