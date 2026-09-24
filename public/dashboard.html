@@ -788,6 +788,43 @@
           btn.textContent = "Approve & publish";
           return;
         }
+
+        // Narration (Item 2): this is the SECOND of the two trigger points
+        // documented in generate-narration.js's own docblock -- the other
+        // lives in generate-playbook.js and only fires when a play is
+        // published at creation time. This one covers a play that started
+        // as 'in_review' and is only now being published here. Fired best-
+        // effort and never blocking the publish itself: every real gate
+        // (pilot program, narration_enabled, youth level, brief_json
+        // presence) is enforced server-side in generate-narration.js, so a
+        // play that shouldn't get narration just gets skipped:true back --
+        // this call doesn't need to know why, only that publishing always
+        // asks.
+        // NOT awaited: generation takes ~20-60s (a Claude call + an
+        // ElevenLabs call per phase), and blocking here would leave the
+        // button stuck on "Publishing..." that whole time. keepalive lets
+        // the request finish even if the coach navigates away; the
+        // playbook page polls for the result on its own.
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          fetch("/api/generate-narration", {
+            method: "POST",
+            keepalive: true,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ playId: btn.dataset.playId }),
+          }).catch((err) => {
+            console.log(`[dashboard] narration trigger failed for play ${btn.dataset.playId}: ${err.message}`);
+          });
+        } catch (err) {
+          // Additive only -- the play is published either way, and a
+          // narration-trigger failure here shouldn't block or alarm the
+          // coach mid-publish.
+          console.log(`[dashboard] narration trigger failed for play ${btn.dataset.playId}: ${err.message}`);
+        }
+
         await loadPlays(programId);
       });
     });
