@@ -280,6 +280,12 @@
     <button type="button" class="btn-secondary" id="correctionMicBtn" style="margin-left:0; margin-top:10px;">🎤 Speak</button>
   </div>
 
+  <label id="narration-row" style="display:none; align-items:center; gap:8px; margin-top:20px; cursor:pointer;">
+    <input type="checkbox" id="narrationEnabled" style="width:auto; margin:0;">
+    Add auditory narration (a spoken walkthrough of each phase, played back alongside the diagram)
+  </label>
+  <div id="narration-youth-note" style="color: var(--gray); font-size: 12px; margin-top: 6px; display:none;">Narration isn't available for Youth-level plays.</div>
+
   <div id="preview-error-box" style="display:none; background: rgba(224,58,46,0.12); border: 1px solid #e03a2e; color: #ff9b90; border-radius: 8px; padding: 12px; font-size: 13px; margin-top: 16px;"></div>
   <div id="preview-status-box" style="display:none; color: var(--gold); font-size: 13px; font-family: 'DM Mono', monospace; margin-top: 16px;"></div>
   <div id="build-status-box" style="display:none; color: var(--gold); font-size: 13px; font-family: 'DM Mono', monospace; margin-top: 16px;"></div>
@@ -378,6 +384,35 @@
   const categorySelect = document.getElementById('category');
   const subCategoryRow = document.getElementById('sub-category-row');
   const subCategorySelect = document.getElementById('sub-category');
+  const narrationCheckbox = document.getElementById('narrationEnabled');
+  const narrationYouthNote = document.getElementById('narration-youth-note');
+
+  // Narration (Item 2) pilot: MUST mirror NARRATION_PILOT_PROGRAM_SLUGS in
+  // api/generate-narration.js (the server gate is the real enforcement --
+  // this only keeps a non-pilot coach from ticking a box that would do
+  // nothing). Widen both together when the pilot expands.
+  const NARRATION_PILOT_PROGRAM_SLUGS = ['st-marys-saints-calgary'];
+  const programSlugById = {};
+  const narrationRow = document.getElementById('narration-row');
+
+  // Also never available for Youth-level plays (same gate enforced again
+  // server-side in generate-playbook.js and generate-narration.js) --
+  // disable and uncheck the box rather than letting a coach opt in to
+  // something that will silently no-op.
+  function updateNarrationAvailability() {
+    const inPilot = NARRATION_PILOT_PROGRAM_SLUGS.includes(programSlugById[programSelect.value]);
+    narrationRow.style.display = inPilot ? 'flex' : 'none';
+    const level = document.querySelector('input[name="level"]:checked').value;
+    const isYouth = level === 'youth';
+    narrationCheckbox.disabled = isYouth || !inPilot;
+    if (isYouth || !inPilot) narrationCheckbox.checked = false;
+    narrationYouthNote.style.display = inPilot && isYouth ? 'block' : 'none';
+  }
+  document.querySelectorAll('input[name="level"]').forEach((el) =>
+    el.addEventListener('change', updateNarrationAvailability)
+  );
+  programSelect.addEventListener('change', updateNarrationAvailability);
+  updateNarrationAvailability();
 
   // The basket-position (up/down) choice only makes sense for half court --
   // full court always shows both baskets. Hide it when Full Court is picked.
@@ -437,6 +472,7 @@
       return;
     }
     programSelect.innerHTML = data.map(p => `<option value="${p.id}">${p.name} (${p.slug})</option>`).join('');
+    data.forEach(p => { programSlugById[p.id] = p.slug; });
 
     // If we arrived here from the dashboard's "Build a play" link, it
     // passes ?program=<id> -- preselect it if it's one of this coach's.
@@ -444,6 +480,7 @@
     if (preselect && data.some(p => p.id === preselect)) {
       programSelect.value = preselect;
     }
+    updateNarrationAvailability();
   }
 
   (async () => {
@@ -594,6 +631,7 @@
       renderPreview(currentBrief);
       builderForm.classList.add('hidden');
       previewSection.classList.remove('hidden');
+      updateNarrationAvailability();
       descriptionVoice.stop();
       correctionVoice.stop();
     } catch (err) {
@@ -845,6 +883,7 @@
           brief: currentBrief,
           category: categoryValue,
           subCategory: requiresSubCategory ? subCategorySelect.value : null,
+          narrationEnabled: narrationCheckbox.checked,
         }),
       });
 
