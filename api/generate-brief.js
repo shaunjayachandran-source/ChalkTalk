@@ -77,10 +77,10 @@ DOWN (basket at bottom):
 - Basket is at approximately x=260, y=375
 - Elbows: left x=207 y=285, right x=313 y=285
 - Blocks: left x=207 y=338, right x=313 y=338
-- Dunker spot (finishing/rim-running spot along the baseline, between the Block and the basket -- closer to the rim than Block; this is a DIFFERENT spot from Block, never reuse the Block coordinate for it): left x=207 y=365, right x=313 y=365
+- Dunker spot (baseline finishing spot just OUTSIDE the lane line, below and outside the Block -- between the Block and the baseline; a DIFFERENT spot from Block, never reuse the Block coordinate for it, and never put two players on the same horizontal line here): left x=194 y=357, right x=326 y=357
 - Screen spot outside the block (baseline/flex screen standing position -- just outside the block toward the sideline, NOT the same spot as the Block anchor itself): left x=182 y=345, right x=338 y=345
-- Inbounder (BLOB out-of-bounds passer -- stands OUT OF BOUNDS behind the baseline, lined up with where the lane/key lines would extend past the baseline if they continued out of bounds; NEVER place an inbounder directly under or behind the basket itself -- that is a confirmed real bug this anchor exists to prevent. Pick whichever side the play's alignment calls for): left x=207 y=402, right x=313 y=402
-- Short corner: left x=132 y=385, right x=388 y=385
+- Inbounder (BLOB out-of-bounds passer -- stands in the out-of-bounds strip just BEHIND the baseline, lined up with where the lane line would extend past the baseline; NEVER directly under or behind the basket itself. The court art's baseline sits at y=370 (DOWN) / y=137 (UP), so this spot is still on the visible court image. Pick whichever side the play's alignment calls for): left x=207 y=382, right x=313 y=382
+- Short corner: left x=132 y=358, right x=388 y=358
 - Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=250, right x=430 y=250
 - Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=200, right x=385 y=200
 - Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=355, right x=462 y=355
@@ -91,10 +91,10 @@ UP (basket at top -- mirrored around the court rectangle's real center, NOT simp
 - Basket is at approximately x=260, y=132
 - Elbows: left x=207 y=222, right x=313 y=222
 - Blocks: left x=207 y=169, right x=313 y=169
-- Dunker spot (finishing/rim-running spot along the baseline, between the Block and the basket -- closer to the rim than Block; this is a DIFFERENT spot from Block, never reuse the Block coordinate for it): left x=207 y=142, right x=313 y=142
+- Dunker spot (baseline finishing spot just OUTSIDE the lane line, below and outside the Block -- between the Block and the baseline; a DIFFERENT spot from Block, never reuse the Block coordinate for it, and never put two players on the same horizontal line here): left x=194 y=150, right x=326 y=150
 - Screen spot outside the block (baseline/flex screen standing position -- just outside the block toward the sideline, NOT the same spot as the Block anchor itself): left x=182 y=162, right x=338 y=162
-- Inbounder (BLOB out-of-bounds passer -- stands OUT OF BOUNDS behind the baseline, lined up with where the lane/key lines would extend past the baseline if they continued out of bounds; NEVER place an inbounder directly under or behind the basket itself -- that is a confirmed real bug this anchor exists to prevent. Pick whichever side the play's alignment calls for): left x=207 y=105, right x=313 y=105
-- Short corner: left x=132 y=122, right x=388 y=122
+- Inbounder (BLOB out-of-bounds passer -- stands in the out-of-bounds strip just BEHIND the baseline, lined up with where the lane line would extend past the baseline; NEVER directly under or behind the basket itself. The court art's baseline sits at y=370 (DOWN) / y=137 (UP), so this spot is still on the visible court image. Pick whichever side the play's alignment calls for): left x=207 y=125, right x=313 y=125
+- Short corner: left x=132 y=149, right x=388 y=149
 - Wings (mid-level perimeter spot, between corner and slot -- use only for wing-specific formations, see above): left x=90 y=257, right x=430 y=257
 - Slot (elevated guard spot for 4-out/5-out spacing, well beyond the arc): left x=135 y=307, right x=385 y=307
 - Deep corners (baseline shooter spot, right at the real corner-3 line): left x=58 y=152, right x=462 y=152
@@ -498,6 +498,12 @@ export default async function handler(req, res) {
   // faithfully including it in its JSON output.
   brief.basketOrientation = courtType === "half" ? resolvedOrientation : undefined;
 
+  // Deterministic guard (not a prompt rule the model can ignore): no two
+  // players may occupy the same spot in a phase. Confirmed real bug, Sep
+  // 24 2026 -- screeners were placed exactly on top of the teammate they
+  // screened for, hiding them in the diagram. See separateStackedPlayers.
+  brief.phases = separateStackedPlayers(brief.phases, brief.basketOrientation, courtType);
+
   // Provenance flag for the UI/downstream code -- lets a coach (or a
   // future "verified" badge) see whether this brief was grounded in a
   // real knowledge base entry or fell back to general model knowledge.
@@ -549,6 +555,118 @@ function fillMissingPlayers(phase) {
   }
 
   return { ...phase, players };
+}
+
+// ---------------------------------------------------------------------
+// Stacked-player separation
+// ---------------------------------------------------------------------
+// Player circles are r=9, so two centers closer than 18 units overlap and
+// one hides the other. When two players share a spot in a phase (start vs
+// start, or end vs end), move ONE of them -- preferring whoever is SETTING
+// a screen -- 22 units aside, then carry that corrected spot backward
+// (the phase they arrived in) and forward (every later phase they hold
+// it) so the CONTINUITY RULE (start == previous end) still holds exactly.
+const STACK_MIN_DIST = 18;
+const STACK_OFFSET = 22;
+// Inset by one circle radius from each court rect (see COURT_RECTS in
+// api/_lib/validate-diagram.js) so a nudged circle never leaves the art.
+const STACK_BOUNDS = {
+  half: { minX: 24, maxX: 495, minY: 119, maxY: 388 },
+  full: { minX: 17, maxX: 503, minY: 13, maxY: 459 },
+};
+
+function samePoint(ax, ay, bx, by, tol = 0.5) {
+  return Math.abs(ax - bx) <= tol && Math.abs(ay - by) <= tol;
+}
+
+function isSettingScreen(action) {
+  const a = String(action || "").toLowerCase();
+  if (!/screen/.test(a)) return false;
+  const setsIt = /\b(sets?|setting|holds?|holding|plants?)\b[^.]*screen|\bscreens? for\b|\bscreens? (at|on)\b/.test(a);
+  // "Uses 3's screen", "waits for the screen", "comes off the screen" --
+  // that's the CUTTER, not the screener.
+  const usesIt = /\b(uses|using|use|off|waits? for|reads?|receives?|behind|coming off|comes off|curls off)\b[^.]*screen/.test(a);
+  return setsIt || !usesIt ? setsIt : false;
+}
+
+// which = "start" | "end" -- the kind of overlap being resolved. For an
+// END overlap, whoever MOVED INTO the occupied spot this phase is the one
+// displaced (the teammate was there first); a screen-setter is preferred
+// over a cutter; the ball-handler/inbounder is never moved.
+function pickPlayerToMove(a, b, which) {
+  const moved = (p) => p.startX !== p.endX || p.startY !== p.endY;
+  const score = (p) =>
+    (isSettingScreen(p.action) ? 100 : 0) +
+    (which === "end" && moved(p) ? 50 : 0) +
+    (!moved(p) ? 10 : 0) +
+    (p.hasBall ? -1000 : 0) +
+    p.number * 0.01;
+  return score(a) >= score(b) ? a : b;
+}
+
+function relocatePlayer(phases, phaseIdx, number, oldX, oldY, newX, newY) {
+  const find = (j) => (phases[j].players || []).find((p) => p.number === number);
+  // Backward: the phase(s) where they arrived at / held this spot.
+  for (let j = phaseIdx; j >= 0; j--) {
+    const p = find(j);
+    if (!p) break;
+    const endHit = samePoint(p.endX, p.endY, oldX, oldY);
+    if (!endHit && j < phaseIdx) break;
+    if (endHit) { p.endX = newX; p.endY = newY; }
+    if (samePoint(p.startX, p.startY, oldX, oldY)) { p.startX = newX; p.startY = newY; continue; }
+    break;
+  }
+  // Forward: every later phase that still starts from this spot.
+  for (let j = phaseIdx + 1; j < phases.length; j++) {
+    const p = find(j);
+    if (!p || !samePoint(p.startX, p.startY, oldX, oldY)) break;
+    p.startX = newX; p.startY = newY;
+    if (samePoint(p.endX, p.endY, oldX, oldY)) { p.endX = newX; p.endY = newY; } else break;
+  }
+}
+
+function separateStackedPlayers(phases, basketOrientation, courtType) {
+  const HALF_COURT_BOUNDS = STACK_BOUNDS[courtType === "full" ? "full" : "half"];
+  const towardBasket = basketOrientation === "up" ? -1 : 1;
+  for (let pass = 0; pass < 10; pass++) {
+    let moved = false;
+    for (let i = 0; i < phases.length && !moved; i++) {
+      const players = phases[i].players || [];
+      for (let a = 0; a < players.length && !moved; a++) {
+        for (let b = a + 1; b < players.length && !moved; b++) {
+          const A = players[a], B = players[b];
+          for (const which of ["start", "end"]) {
+            const ax = A[which + "X"], ay = A[which + "Y"], bx = B[which + "X"], by = B[which + "Y"];
+            if ([ax, ay, bx, by].some((v) => typeof v !== "number")) continue;
+            if (Math.hypot(ax - bx, ay - by) >= STACK_MIN_DIST) continue;
+            const victim = pickPlayerToMove(A, B, which);
+            const other = victim === A ? B : A;
+            const vx = victim[which + "X"], vy = victim[which + "Y"];
+            // Direction: opposite to where the OTHER player cuts (this phase,
+            // else next phase) -- a screener stands on the side the cutter
+            // runs away from. Fallback: the basket side of them.
+            let dx = 0, dy = 0;
+            const nextOther = phases[i + 1] && (phases[i + 1].players || []).find((p) => p.number === other.number);
+            const mv = other.startX !== other.endX || other.startY !== other.endY ? other
+              : nextOther && (nextOther.startX !== nextOther.endX || nextOther.startY !== nextOther.endY) ? nextOther : null;
+            if (mv) { dx = -(mv.endX - mv.startX); dy = -(mv.endY - mv.startY); }
+            else if (vx !== other[which + "X"] || vy !== other[which + "Y"]) { dx = vx - other[which + "X"]; dy = vy - other[which + "Y"]; }
+            else { dy = towardBasket; }
+            const len = Math.hypot(dx, dy) || 1;
+            const ox = other[which + "X"], oy = other[which + "Y"];
+            const nx = Math.round(Math.min(HALF_COURT_BOUNDS.maxX, Math.max(HALF_COURT_BOUNDS.minX, ox + (dx / len) * STACK_OFFSET)));
+            const ny = Math.round(Math.min(HALF_COURT_BOUNDS.maxY, Math.max(HALF_COURT_BOUNDS.minY, oy + (dy / len) * STACK_OFFSET)));
+            relocatePlayer(phases, i, victim.number, vx, vy, nx, ny);
+            console.log(`[generate-brief] phase ${phases[i].phaseNumber}: player ${victim.number} was stacked on player ${other.number} at (${vx},${vy}); moved to (${nx},${ny}).`);
+            moved = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  return phases;
 }
 
 function sendJson(res, obj, status = 200) {
