@@ -102,6 +102,42 @@ function validateCourtBounds(phase, courtType) {
   return issues;
 }
  
+// Two player circles (r=9) whose centers sit closer than 18 units overlap,
+// so one hides the other -- confirmed real bug Sep 24 2026 (screeners
+// placed exactly on the teammate they screened for). generate-brief.js's
+// separateStackedPlayers() should already prevent this; this is the
+// second, independent check on the data the diagram was actually built from.
+const STACK_MIN_DIST = 18;
+function validateNoStacking(phase) {
+  const issues = [];
+  const players = (phase.players || []).filter((p) => (p.id ?? p.number) != null);
+  for (const which of ["start", "end"]) {
+    for (let a = 0; a < players.length; a++) {
+      for (let b = a + 1; b < players.length; b++) {
+        const A = players[a], B = players[b];
+        const d = Math.hypot(A[which + "X"] - B[which + "X"], A[which + "Y"] - B[which + "Y"]);
+        if (Number.isFinite(d) && d < STACK_MIN_DIST) {
+          issues.push(
+            `Players ${A.id ?? A.number} and ${B.id ?? B.number}: ${which} positions are only ${d.toFixed(1)} units apart ` +
+            `-- their circles overlap and one will be hidden under the other.`
+          );
+        }
+      }
+    }
+  }
+  return issues;
+}
+
+// Same distinction as generate-brief.js: "Uses 3's screen and pops" is the
+// CUTTER (fine to move); only a player SETTING the screen must stay planted.
+function isSettingScreen(actionText) {
+  const a = actionText;
+  if (!/screen/.test(a)) return false;
+  const setsIt = /\b(sets?|setting|holds?|holding|plants?)\b[^.]*screen|\bscreens? for\b|\bscreens? (at|on)\b/.test(a);
+  const usesIt = /\b(uses|using|use|off|waits? for|reads?|receives?|behind|coming off|comes off|curls off)\b[^.]*screen/.test(a);
+  return setsIt || !usesIt ? setsIt : false;
+}
+
 /**
  * @param {object} phase - the brief's phase object: { phaseNumber, players: [{id, startX, startY, endX, endY, action}, ...], ... }
  * @param {string} svg - the generated (already-stripped) SVG fragment for this phase
@@ -111,6 +147,7 @@ function validateCourtBounds(phase, courtType) {
 export function validatePhaseOutput(phase, svg, courtType = "half") {
   const issues = [];
   issues.push(...validateCourtBounds(phase, courtType));
+  issues.push(...validateNoStacking(phase));
   const players = phase.players || [];
 
   for (const p of players) {
@@ -195,7 +232,7 @@ export function validatePhaseOutput(phase, svg, courtType = "half") {
     // popped/rolled elsewhere in prose while start==end says they didn't
     // move -- that combination means the brief step's SCREEN-THEN-MOVE
     // RULE was violated upstream, not a diagram bug, so just surface it.
-    if (moves && /screen/.test(actionText) && /(pop|roll|relocat)/.test(actionText)) {
+    if (moves && isSettingScreen(actionText) && /(pop|roll|relocat)/.test(actionText)) {
       issues.push(
         `Player ${id}: action text describes both setting a screen AND popping/rolling/relocating in the same phase ("${p.action}") -- these must be two separate phases (see generate-brief.js's SCREEN-THEN-MOVE RULE); this phase's brief data needs to be split, not just its diagram.`
       );
