@@ -26,7 +26,7 @@
  * generated/<program>/<slug>.html path.
  *
  * Body (JSON):
- *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string }
+ *   { programId: string, brief: { ...see generate-brief.js schema }, category?: string, subCategory?: string, narrationEnabled?: boolean }
  *
  *   category is one of PLAY_CATEGORIES below (offense/defense/slob/blob/special).
  *   It powers the public team directory page (public/team.html) so plays can
@@ -40,6 +40,13 @@
  *   deliberately no inferred/"Other" fallback: a coach must confirm this at
  *   build time. Ignored (stored as null) for slob/blob/special, which stay
  *   flat grids with no sub-grouping.
+ *
+ *   narrationEnabled (Item 2, auditory narration) is the coach's per-play
+ *   opt-in, stored as plays.narration_enabled -- read later by
+ *   generate-narration.js when a publish action fires. Forced to false for
+ *   a youth-level play regardless of what's sent, mirroring the same
+ *   "anything that isn't youth" gate generate-narration.js enforces
+ *   server-side -- defense in depth, not the only place this is checked.
  *
  * Response (JSON):
  *   { url: string }   -- public Blob URL of the generated playbook
@@ -200,7 +207,7 @@ export default async function handler(req, res) {
     return sendJson(res, { error: "Invalid JSON body" }, 400);
   }
 
-  const { programId, brief, category, subCategory } = body;
+  const { programId, brief, category, subCategory, narrationEnabled } = body;
 
   if (!programId || !brief || !Array.isArray(brief.phases) || brief.phases.length === 0) {
     return sendJson(res, { error: "Missing or invalid brief" }, 400);
@@ -224,6 +231,13 @@ export default async function handler(req, res) {
     }
     resolvedSubCategory = subCategory;
   }
+
+  // Narration (Item 2) opt-in: forced false for youth regardless of what
+  // the client sent, mirroring the same "anything that isn't youth" gate
+  // generate-narration.js enforces again server-side when a publish
+  // action later fires -- this is a second, independent check, not the
+  // only one.
+  const resolvedNarrationEnabled = !!narrationEnabled && brief.level !== "youth";
 
   const authResult = await validateCoachSession(req, programId);
   if (!authResult.ok) {
@@ -276,6 +290,12 @@ export default async function handler(req, res) {
             phase_count: brief.phases.length,
             court_type: brief.courtType || "half",
             status: initialStatus,
+            narration_enabled: resolvedNarrationEnabled,
+            // Rebuilding an existing play (same program+slug) must never
+            // keep serving the PREVIOUS build's narration audio against
+            // new/changed phases -- clear it; generate-narration.js
+            // repopulates it on the next publish.
+            narration_json: null,
             created_by: user.id,
             updated_at: new Date().toISOString(),
           },
@@ -294,7 +314,7 @@ export default async function handler(req, res) {
     return sendJson(res, { error: `Play generation failed: ${err.message}` }, 502);
   }
 
-  const html = buildShellHtml(brief, phaseResults);
+  const html = buildShellHtml(brief, phaseResults, playRow.id, resolvedNarrationEnabled);
   const blobPath = `generated/${playRow.id}.html`;
 
   let blobResult;
@@ -310,6 +330,20 @@ export default async function handler(req, res) {
     return sendJson(res, { error: `Failed to save playbook: ${err.message}` }, 502);
   }
 
+  // brief_json (Item 2, auditory narration): folds each confirmed phase's
+  // brief data together with the sidebarHtml this step just generated for
+  // it. This is the SAME phase data generate-narration.js later grounds
+  // its narration in -- a deliberate single shared source rather than a
+  // third un-synced copy of phase/anchor data, per the project's own
+  // documented history of generate-brief.js/generate-playbook.js drift.
+  const briefJson = {
+    ...brief,
+    phases: brief.phases.map((phase) => {
+      const generated = phaseResults.find((p) => p.phaseNumber === phase.phaseNumber);
+      return { ...phase, sidebarHtml: generated ? generated.sidebarHtml : "" };
+    }),
+  };
+
   const { error: updateErr } = await supabase
     .from("plays")
     .update({ storage_url: blobResult.url })
@@ -319,6 +353,38 @@ export default async function handler(req, res) {
     // record's storage_url link didn't save. Don't fail the whole
     // request over it; the coach still gets a working URL back.
     console.log(`[generate-playbook] Failed to update storage_url for play ${playRow.id}: ${updateErr.message}`);
+  }
+
+  // Deliberately a SEPARATE write from storage_url above: view-play.js
+  // 404s any play with no storage_url, so if brief_json ever fails (e.g.
+  // a missing column), it must not take the core "coach can open their
+  // play" path down with it. Narration just won't have data to ground in.
+  const { error: briefJsonErr } = await supabase
+    .from("plays")
+    .update({ brief_json: briefJson })
+    .eq("id", playRow.id);
+  if (briefJsonErr) {
+    console.log(`[generate-playbook] Failed to save brief_json for play ${playRow.id}: ${briefJsonErr.message}`);
+  }
+
+  // Narration (Item 2): only ever triggered from a publish action, and
+  // only for the creation-time publish path here -- initialStatus was
+  // already resolved to "published" above from the coach's own
+  // can_publish grant. The OTHER trigger point (an explicit Publish click
+  // on an existing in_review play) lives in dashboard.html and is
+  // untouched by this file. Awaited rather than backgrounded: a plain
+  // fire-and-forget fetch isn't reliably safe on Vercel (the function can
+  // be frozen the instant this response is sent), and Fluid Compute
+  // (needed for waitUntil) isn't confirmed enabled on this project.
+  // Also skipped outright when the coach didn't opt in (or it's youth):
+  // no point spending a round trip -- and build time -- just to get
+  // skipped:true back.
+  if (initialStatus === "published" && resolvedNarrationEnabled) {
+    try {
+      await triggerNarration(playRow.id, req);
+    } catch (err) {
+      console.log(`[generate-playbook] narration trigger failed for play ${playRow.id}: ${err.message}`);
+    }
   }
 
   const diagramWarnings = phaseResults.flatMap((p) =>
@@ -333,7 +399,30 @@ export default async function handler(req, res) {
     playId: playRow.id,
     status: initialStatus,
     diagramWarnings: diagramWarnings.length ? diagramWarnings : undefined,
-  });}
+  });
+}
+
+// Calls /api/generate-narration for this play, forwarding the original
+// caller's own auth header so generate-narration.js's own
+// validateCoachSession check passes exactly as it would for a direct
+// call. Resolves the origin from the incoming request's own Host header.
+async function triggerNarration(playId, req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers.host;
+  if (!host) {
+    throw new Error("Missing Host header, cannot resolve narration endpoint origin");
+  }
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  const res = await fetch(`${proto}://${host}/api/generate-narration`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(authHeader ? { Authorization: authHeader } : {}) },
+    body: JSON.stringify({ playId }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`generate-narration returned ${res.status}: ${errText}`);
+  }
+}
 
 // Defensive: the prompt tells the model NOT to include its own outer <svg>
 // tag (the code supplies the court + real <svg> wrapper already), but if
@@ -473,7 +562,7 @@ ${JSON.stringify(phase, null, 2)}`;
   };
 }
 
-function buildShellHtml(brief, phaseResults) {
+function buildShellHtml(brief, phaseResults, playId, narrationEnabled) {
   const tabs = phaseResults
     .map(
       (p, i) =>
@@ -535,6 +624,18 @@ function buildShellHtml(brief, phaseResults) {
   .kbox { background: var(--kbox-bg); border: 1px solid var(--kbox-border); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
   .bbridge { background: rgba(26,188,156,0.08); border: 1px solid var(--teal); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; line-height: 1.6; }
   #tip { position: absolute; display: none; background: #1a1400; border: 1px solid var(--gold); color: var(--white); padding: 8px 12px; border-radius: 6px; font-size: 12px; max-width: 240px; z-index: 100; pointer-events: none; }
+  .narration-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .narration-play-btn { font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 600; background: var(--panel-2); border: 1px solid var(--gold); color: var(--gold); padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+  .narration-play-btn:hover { background: rgba(240,180,41,0.12); }
+  .narration-unavailable, .narration-pending { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--gray); }
+  /* stroke-based (not CSS filter): CSS filter functions on individual SVG
+     child elements are unreliable across browsers (notably Safari/iOS),
+     while animating stroke/stroke-width works everywhere. */
+  @keyframes narrationPulse {
+    0%, 100% { stroke-width: 1.6px; }
+    50% { stroke-width: 5px; stroke: #ffffff; }
+  }
+  .pc.narrating-pulse { animation: narrationPulse 1s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -561,6 +662,9 @@ ${sidebars}
 
 <script>
   const totalPhases = ${phaseResults.length};
+  const PLAY_ID = ${JSON.stringify(playId || null)};
+  const NARRATION_ENABLED = ${narrationEnabled ? "true" : "false"};
+  let currentPhaseNum = ${phaseResults[0] ? phaseResults[0].phaseNumber : 1};
   function switchPhase(n) {
     document.querySelectorAll('.phase-diagram, .phase-sidebar').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -568,6 +672,8 @@ ${sidebars}
     document.getElementById('sb-' + n).classList.add('active');
     document.querySelector('.tab-btn[data-phase="' + n + '"]').classList.add('active');
     document.getElementById('progressFill').style.width = Math.round((n / totalPhases) * 100) + '%';
+    currentPhaseNum = n;
+    if (NARRATION_ENABLED) onPhaseSwitchedForNarration(n);
   }
   const tip = document.getElementById('tip');
   document.addEventListener('mouseover', (e) => {
@@ -585,6 +691,226 @@ ${sidebars}
   document.addEventListener('mouseout', (e) => {
     if (e.target.closest('.pc')) tip.style.display = 'none';
   });
+
+  // --- Auditory narration playback (Item 2) ---
+  // Narration is generated AFTER build/publish (see generate-narration.js)
+  // and this page is served straight from public Blob storage with no
+  // server/auth context of its own, so narration data can't be baked in
+  // at build time -- it's fetched client-side, once, from a small public
+  // read endpoint keyed only by playId (api/get-narration.js). Playback
+  // uses one plain <audio> element (no Web Audio API) with manual volume
+  // tweening for a cross-fade when switching phases mid-playback, per the
+  // agreed design. Player highlighting reads the per-segment start/end
+  // times ElevenLabs returned (plays.narration_json) and pulses whichever
+  // .pc circle matches the currently-speaking segment's player number.
+  let narrationByPhase = null; // { [phaseNumber]: { audioUrl, timings, error } }
+  let audioEl = null;
+  let narrationIsPlaying = false;
+
+  // Timers for the in-flight fade and the delayed pause/source-swap.
+  // Every new user action cancels both first -- otherwise a quick
+  // pause-then-play (or rapid tab switching) lets a stale delayed pause
+  // fire AFTER playback restarted, leaving audio silent while the button
+  // still says "Pause".
+  let fadeTimer = null;
+  let pendingAudioTimer = null;
+  function cancelPendingAudio() {
+    if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; }
+    if (pendingAudioTimer) { clearTimeout(pendingAudioTimer); pendingAudioTimer = null; }
+  }
+
+  // Narration is often still generating when this page first loads
+  // (especially right after "Approve & publish"), so poll briefly instead
+  // of showing a permanent "check back" message that never updates.
+  const NARRATION_POLL_MS = 10000;
+  const NARRATION_POLL_MAX = 18; // ~3 minutes, then give up quietly
+  let narrationPollCount = 0;
+
+  if (NARRATION_ENABLED && PLAY_ID) {
+    fetchNarration();
+  }
+
+  function clearNarrationBars() {
+    document.querySelectorAll('.narration-bar').forEach((el) => el.remove());
+  }
+
+  async function fetchNarration() {
+    try {
+      const res = await fetch('/api/get-narration?playId=' + encodeURIComponent(PLAY_ID));
+      if (!res.ok) { clearNarrationBars(); return; }
+      const data = await res.json();
+      if (!data || !data.generated || !Array.isArray(data.narration)) {
+        narrationPollCount++;
+        if (narrationPollCount <= NARRATION_POLL_MAX) {
+          renderNarrationPending();
+          setTimeout(fetchNarration, NARRATION_POLL_MS);
+        } else {
+          clearNarrationBars();
+        }
+        return;
+      }
+      narrationByPhase = {};
+      data.narration.forEach((p) => { narrationByPhase[p.phaseNumber] = p; });
+      renderNarrationControls();
+    } catch (e) {
+      // Narration is additive -- a fetch failure should never break the
+      // diagram/sidebar view a coach or parent actually came here for.
+      clearNarrationBars();
+    }
+  }
+
+  function renderNarrationPending() {
+    clearNarrationBars();
+    document.querySelectorAll('.phase-diagram').forEach((el) => {
+      const bar = document.createElement('div');
+      bar.className = 'narration-bar';
+      bar.innerHTML = '<span class="narration-pending">Narration is being prepared -- it will appear here automatically.</span>';
+      el.appendChild(bar);
+    });
+  }
+
+  function renderNarrationControls() {
+    clearNarrationBars();
+    document.querySelectorAll('.phase-diagram').forEach((el) => {
+      const n = parseInt(el.id.replace('pd-', ''), 10);
+      const entry = narrationByPhase[n];
+      const bar = document.createElement('div');
+      bar.className = 'narration-bar';
+      if (entry && entry.audioUrl) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'narration-play-btn';
+        btn.dataset.phase = String(n);
+        btn.textContent = '\u25B6 Play Narration';
+        btn.addEventListener('click', () => toggleNarration(n));
+        bar.appendChild(btn);
+      } else {
+        bar.innerHTML = '<span class="narration-unavailable">Narration unavailable for this phase.</span>';
+      }
+      el.appendChild(bar);
+    });
+  }
+
+  function ensureAudioEl() {
+    if (!audioEl) {
+      audioEl = new Audio();
+      audioEl.addEventListener('timeupdate', onNarrationTimeUpdate);
+      audioEl.addEventListener('ended', () => {
+        narrationIsPlaying = false;
+        clearPlayerHighlight();
+        updateNarrationButtons();
+      });
+    }
+    return audioEl;
+  }
+
+  // Note: iOS Safari ignores programmatic volume changes, so there the
+  // fade is a no-op and playback simply starts/stops -- harmless.
+  function fadeVolume(el, from, to, ms) {
+    if (fadeTimer) clearInterval(fadeTimer);
+    const steps = 10;
+    const stepMs = Math.max(1, Math.round(ms / steps));
+    let i = 0;
+    el.volume = from;
+    fadeTimer = setInterval(() => {
+      i++;
+      el.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps)));
+      if (i >= steps) { clearInterval(fadeTimer); fadeTimer = null; }
+    }, stepMs);
+  }
+
+  function toggleNarration(n) {
+    const entry = narrationByPhase && narrationByPhase[n];
+    if (!entry || !entry.audioUrl) return;
+    const el = ensureAudioEl();
+    cancelPendingAudio();
+    if (narrationIsPlaying && currentPhaseNum === n) {
+      fadeVolume(el, el.volume, 0, 220);
+      pendingAudioTimer = setTimeout(() => { pendingAudioTimer = null; el.pause(); }, 230);
+      narrationIsPlaying = false;
+      clearPlayerHighlight();
+    } else {
+      if (n !== currentPhaseNum) switchPhase(n);
+      startPhaseAudio(n, el.src === entry.audioUrl);
+    }
+    updateNarrationButtons();
+  }
+
+  function startPhaseAudio(n, alreadyLoaded) {
+    const entry = narrationByPhase[n];
+    const el = ensureAudioEl();
+    cancelPendingAudio();
+    if (!alreadyLoaded) {
+      el.src = entry.audioUrl;
+      el.currentTime = 0;
+    }
+    el.volume = 0;
+    el.play().catch(() => {});
+    fadeVolume(el, 0, 1, 220);
+    narrationIsPlaying = true;
+  }
+
+  // Called on every phase-tab switch. If narration was actively playing,
+  // cross-fades into the new phase's track (fade the old one out, swap
+  // source, fade the new one in) instead of a hard cut or letting the old
+  // phase's audio keep playing under the new diagram.
+  function onPhaseSwitchedForNarration(n) {
+    clearPlayerHighlight();
+    if (!narrationIsPlaying) {
+      updateNarrationButtons();
+      return;
+    }
+    const el = ensureAudioEl();
+    cancelPendingAudio();
+    const entry = narrationByPhase && narrationByPhase[n];
+    if (!entry || !entry.audioUrl) {
+      fadeVolume(el, el.volume, 0, 200);
+      pendingAudioTimer = setTimeout(() => { pendingAudioTimer = null; el.pause(); }, 210);
+      narrationIsPlaying = false;
+      updateNarrationButtons();
+      return;
+    }
+    fadeVolume(el, el.volume, 0, 200);
+    pendingAudioTimer = setTimeout(() => {
+      pendingAudioTimer = null;
+      el.src = entry.audioUrl;
+      el.currentTime = 0;
+      el.volume = 0;
+      el.play().catch(() => {});
+      fadeVolume(el, 0, 1, 200);
+    }, 210);
+    updateNarrationButtons();
+  }
+
+  function updateNarrationButtons() {
+    document.querySelectorAll('.narration-play-btn').forEach((btn) => {
+      const n = parseInt(btn.dataset.phase, 10);
+      const playingThis = narrationIsPlaying && n === currentPhaseNum;
+      btn.textContent = playingThis ? '\u23F8 Pause Narration' : '\u25B6 Play Narration';
+    });
+  }
+
+  function onNarrationTimeUpdate() {
+    if (!narrationByPhase || !narrationByPhase[currentPhaseNum]) return;
+    const timings = narrationByPhase[currentPhaseNum].timings || [];
+    const t = audioEl.currentTime;
+    const active = timings.find((seg) => seg.player && t >= seg.startTime && t < seg.endTime);
+    highlightPlayer(active ? active.player : null);
+  }
+
+  function highlightPlayer(playerNum) {
+    document.querySelectorAll('.pc').forEach((el) => {
+      if (playerNum && el.getAttribute('data-player') === String(playerNum)) {
+        el.classList.add('narrating-pulse');
+      } else {
+        el.classList.remove('narrating-pulse');
+      }
+    });
+  }
+
+  function clearPlayerHighlight() {
+    document.querySelectorAll('.pc.narrating-pulse').forEach((el) => el.classList.remove('narrating-pulse'));
+  }
 </script>
 
 </body>
