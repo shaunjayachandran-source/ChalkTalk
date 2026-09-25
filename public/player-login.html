@@ -48,6 +48,7 @@
     margin: 0 0 24px;
     color: var(--muted);
     font-size: 13px;
+    line-height: 1.5;
   }
   label {
     display: block;
@@ -84,86 +85,178 @@
     cursor: pointer;
   }
   button:disabled { opacity: 0.6; cursor: default; }
-  #msg {
+  button.secondary {
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid var(--gold);
+    margin-top: 12px;
+  }
+  .msg {
     margin-top: 14px;
     font-size: 13px;
     min-height: 18px;
+    line-height: 1.5;
   }
-  #msg.error { color: #ff7b6e; }
-  #msg.info { color: var(--muted); }
+  .msg.error { color: #ff7b6e; }
+  .msg.info { color: var(--muted); }
+  .msg.ok { color: #7fd1a8; }
+  .divider {
+    display: flex; align-items: center; gap: 10px;
+    margin: 22px 0 0; color: var(--muted); font-size: 11px;
+  }
+  .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+
+  /* Password field with show/hide eye. The global button rule above styles
+     every <button> as a full-width gold bar, so the eye and the text-link
+     buttons explicitly undo that. */
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 46px; }
+  button.eye {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    width: 36px; height: 36px; margin: 0; padding: 0;
+    background: transparent; border: none; border-radius: 6px;
+    color: var(--muted); display: flex; align-items: center; justify-content: center;
+  }
+  button.eye:hover, button.eye:focus-visible { color: var(--gold); outline: none; }
+  button.eye svg { width: 20px; height: 20px; }
+  button.link-btn {
+    width: auto; margin: 12px 0 0; padding: 0; background: none; border: none;
+    color: var(--muted); font-size: 12px; font-weight: 400; text-decoration: underline;
+  }
+  button.link-btn:hover { color: var(--gold); }
+  .hidden { display: none !important; }
 </style>
+<script>
+  // Captured before supabase-js parses and clears the URL fragment, so the
+  // page can tell an invite / sign-in link / reset / expired link apart
+  // from a normal visit.
+  window.__ctAuthHash = window.location.hash || "";
+</script>
 </head>
 <body>
-  <form class="card" id="login-form">
+
+  <!-- SIGN IN (Sep 25, 2026): players and parents get BOTH options, per
+       Shaun's decision -- an emailed one-time sign-in link (the default,
+       nothing to remember) or an optional password. Each sign-in link
+       works once; the viewer session still ends after the 2-hour idle
+       window (api/_lib/validate-viewer-session.js), after which a fresh
+       link (or the password) is needed. -->
+  <form class="card" id="signin-form">
     <h1>ChalkTalk</h1>
-    <p class="sub">Player login</p>
+    <p class="sub">Player &amp; parent login</p>
 
     <label for="email">Email</label>
     <input type="email" id="email" required autocomplete="email" />
 
-    <label for="password">Password</label>
-    <input type="password" id="password" required autocomplete="current-password" />
+    <button type="submit" id="link-btn">Email me a sign-in link</button>
 
-    <button type="submit" id="submit-btn">Log in</button>
-    <div id="msg"></div>
+    <div id="pw-block" class="hidden">
+      <div class="divider">or use your password</div>
+      <label for="password">Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="password" autocomplete="current-password" />
+        <button type="button" class="eye" data-target="password" aria-label="Show password" aria-pressed="false"></button>
+      </div>
+      <button type="button" class="secondary" id="pw-login-btn">Log in with password</button>
+      <button type="button" class="link-btn" id="forgot-link">Forgot password?</button>
+    </div>
+
+    <button type="button" class="link-btn" id="toggle-pw-link">Use a password instead</button>
+    <div class="msg" id="msg"></div>
   </form>
 
-  <!-- Shown instead of the login form when the coach arrives here via a
-       Supabase "reset password" or "magic link" email. Those links carry a
-       recovery token in the URL that supabase-js picks up automatically and
-       fires a PASSWORD_RECOVERY auth event for -- this is the landing page
-       that lets them actually set a new password once that happens. -->
-  <form class="card" id="reset-form" style="display:none;">
+  <!-- Shown after a sign-in link is requested. -->
+  <div class="card hidden" id="sent-card">
+    <h1>Check your email</h1>
+    <p class="sub" id="sent-sub">If that email has a ChalkTalk login, a sign-in link is on its way.</p>
+    <p class="sub">Tap the link on this device to open your team's playbook. It works once. Check spam or promotions if it doesn't show up in a few minutes.</p>
+    <button type="button" class="secondary" id="resend-btn">Send it again</button>
+    <button type="button" class="link-btn" id="sent-back">&larr; Back</button>
+    <div class="msg" id="sent-msg"></div>
+  </div>
+
+  <!-- Arrived from an INVITE email. Password is optional: they can set one
+       now, or skip and keep using emailed sign-in links. -->
+  <form class="card hidden" id="welcome-form">
+    <h1>You're in</h1>
+    <p class="sub">Welcome to your team's playbook. Want a password too? Set one now, or skip it and sign in with an emailed link each time.</p>
+
+    <label for="welcome-password">Password (optional)</label>
+    <div class="pw-wrap">
+      <input type="password" id="welcome-password" autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="welcome-password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
+    <label for="welcome-confirm">Confirm password</label>
+    <div class="pw-wrap">
+      <input type="password" id="welcome-confirm" autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="welcome-confirm" aria-label="Show password" aria-pressed="false"></button>
+    </div>
+
+    <button type="submit" id="welcome-save-btn">Save password &amp; continue</button>
+    <button type="button" class="secondary" id="welcome-skip-btn">Skip &mdash; I'll use email links</button>
+    <div class="msg" id="welcome-msg"></div>
+  </form>
+
+  <!-- Arrived from a password-RESET email. -->
+  <form class="card hidden" id="reset-form">
     <h1>ChalkTalk</h1>
     <p class="sub">Set a new password</p>
 
     <label for="new-password">New password</label>
-    <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
-
+    <div class="pw-wrap">
+      <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="new-password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
     <label for="confirm-password">Confirm password</label>
-    <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+    <div class="pw-wrap">
+      <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="confirm-password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
 
     <button type="submit" id="reset-submit-btn">Save new password</button>
-    <div id="reset-msg"></div>
+    <div class="msg" id="reset-msg"></div>
+  </form>
+
+  <!-- Forgot password. -->
+  <form class="card hidden" id="forgot-form">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Reset your password</p>
+    <label for="forgot-email">Email</label>
+    <input type="email" id="forgot-email" required autocomplete="email" />
+    <button type="submit" id="forgot-submit-btn">Email me a reset link</button>
+    <button type="button" class="link-btn" id="forgot-back">&larr; Back to log in</button>
+    <div class="msg" id="forgot-msg"></div>
   </form>
 
   <script type="module">
     import { supabase } from "/js/supabase-client.js";
 
-    const loginForm = document.getElementById("login-form");
-    const msg = document.getElementById("msg");
-    const btn = document.getElementById("submit-btn");
+    const PAGE_URL = window.location.origin + "/player-login.html";
+    const HOME = "/player-home.html";
+    const $ = (id) => document.getElementById(id);
+    const cards = ["signin-form", "sent-card", "welcome-form", "reset-form", "forgot-form"];
+    function show(id) { cards.forEach((c) => $(c).classList.toggle("hidden", c !== id)); }
+    function say(el, text, kind) { el.textContent = text; el.className = "msg" + (kind ? " " + kind : ""); }
 
-    const resetForm = document.getElementById("reset-form");
-    const resetMsg = document.getElementById("reset-msg");
-    const resetBtn = document.getElementById("reset-submit-btn");
+    // ---- What kind of visit is this? ----
+    const hashParams = new URLSearchParams((window.__ctAuthHash || window.location.hash || "").replace(/^#/, ""));
+    const linkType = hashParams.get("type");
+    const isInviteLink = linkType === "invite" || linkType === "signup";
+    const isRecoveryLink = linkType === "recovery";
+    const isMagicLink = linkType === "magiclink";
+    const linkError = hashParams.get("error_code") || hashParams.get("error");
 
-    function showResetForm() {
-      loginForm.style.display = "none";
-      resetForm.style.display = "block";
-    }
-
-    // Deep-link-back after login (Sep 15, 2026): if this player/parent
-    // arrived here from a public team page's "This play is private" modal,
-    // that modal stashed the clicked play's id in sessionStorage before
-    // navigating (see showAccessModal() in chalk-team-common.js). Once we
-    // have a real viewer session, try opening that exact play via
-    // api/view-play.js instead of just landing on player-home.html -- same
-    // fetch-into-a-blank-tab-free approach player-home.html's own
-    // openPlay() uses, but replacing THIS tab since we're already
-    // mid-navigation here. Falls back to the normal player-home landing on
-    // any failure (wrong program, play unpublished, storage blocked, etc.)
-    // so a stale/bad pending id never strands the viewer on a blank page.
+    // ---- Deep-link-back after login (Sep 15, 2026) ----
+    // If this player/parent arrived from a public team page's "This play
+    // is private" modal, that modal stashed the clicked play's id in
+    // sessionStorage (showAccessModal() in chalk-team-common.js). Once a
+    // real viewer session exists, open that exact play via
+    // api/view-play.js; fall back to player-home on any failure.
     async function goPostLogin(defaultUrl) {
       let pendingPlayId = null;
-      try {
-        pendingPlayId = sessionStorage.getItem("ct_pending_play_id");
-      } catch (err) {}
-
+      try { pendingPlayId = sessionStorage.getItem("ct_pending_play_id"); } catch (err) {}
       if (pendingPlayId) {
-        try {
-          sessionStorage.removeItem("ct_pending_play_id");
-        } catch (err) {}
+        try { sessionStorage.removeItem("ct_pending_play_id"); } catch (err) {}
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           try {
@@ -172,99 +265,169 @@
             });
             if (res.ok) {
               const html = await res.text();
-              document.open();
-              document.write(html);
-              document.close();
+              document.open(); document.write(html); document.close();
               return;
             }
-          } catch (err) {
-            // Fall through to the default landing below.
-          }
+          } catch (err) { /* fall through */ }
         }
       }
-
       window.location.href = defaultUrl;
     }
 
-    // Supabase fires this when the URL contains a valid recovery/magic-link
-    // token (it parses the URL itself -- we don't need to touch location.hash).
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        showResetForm();
-      }
+    // ---- Show/hide password eye ----
+    const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const EYE_SHUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    document.querySelectorAll("button.eye").forEach((eyeBtn) => {
+      eyeBtn.innerHTML = EYE_OPEN;
+      eyeBtn.addEventListener("click", () => {
+        const input = $(eyeBtn.dataset.target);
+        const reveal = input.type === "password";
+        input.type = reveal ? "text" : "password";
+        eyeBtn.innerHTML = reveal ? EYE_SHUT : EYE_OPEN;
+        eyeBtn.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+        eyeBtn.setAttribute("aria-pressed", String(reveal));
+        input.focus();
+      });
     });
 
-    // If already logged in with a normal session (not a recovery link),
-    // skip straight to the dashboard (or a pending play -- see
-    // goPostLogin). Recovery sessions are handled above instead, so check
-    // the URL for that first.
-    const isRecoveryLink = window.location.hash.includes("type=recovery");
-    if (!isRecoveryLink) {
+    // ---- Route the visit ----
+    const msg = $("msg");
+    if (linkError) {
+      say(msg,
+        linkError === "otp_expired"
+          ? "That link has expired or was already used. Enter your email below and we'll send a fresh one."
+          : "That link didn't work: " + (hashParams.get("error_description") || linkError).replace(/\+/g, " "),
+        "error");
+    } else if (isInviteLink) {
+      show("welcome-form");
+    }
+
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") show("reset-form");
+      else if (event === "SIGNED_IN" && isInviteLink) show("welcome-form");
+    });
+
+    // Already signed in (a returning visit, or arriving from an emailed
+    // sign-in link) -> straight to the playbook. Invite and reset links
+    // are handled by their own forms instead.
+    if (!isInviteLink && !isRecoveryLink) {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) goPostLogin("/player-home.html");
+        if (session) goPostLogin(HOME);
       });
     }
 
-    // player-home.html redirects here with ?expired=1 when the locked
-    // rolling 2-hour idle window (see api/_lib/validate-viewer-session.js)
-    // has lapsed -- this just explains why they're being asked to log in
-    // again rather than leaving it unexplained.
-    if (new URLSearchParams(window.location.search).get("expired") === "1") {
-      msg.textContent = "You were logged out after 2 hours of inactivity. Log back in to keep viewing.";
-      msg.className = "info";
+    // player-home.html redirects here with ?expired=1 when the 2-hour idle
+    // window (api/_lib/validate-viewer-session.js) has lapsed.
+    if (new URLSearchParams(window.location.search).get("expired") === "1" && !linkError) {
+      say(msg, "You were signed out after 2 hours of inactivity. Enter your email for a new sign-in link.", "info");
     }
 
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      msg.textContent = "";
-      msg.className = "";
-      btn.disabled = true;
-      btn.textContent = "Logging in...";
-
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-      if (error) {
-        msg.textContent = error.message;
-        msg.className = "error";
-        btn.disabled = false;
-        btn.textContent = "Log in";
-        return;
+    // ---- Emailed sign-in link (default) ----
+    let lastEmail = "";
+    async function sendSignInLink(email, msgEl, btn, idleText) {
+      btn.disabled = true; btn.textContent = "Sending...";
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          // Never create a new account from this page -- logins are only
+          // ever created by a coach's "Invite Login" (api/invite-viewer.js).
+          shouldCreateUser: false,
+          emailRedirectTo: PAGE_URL,
+        },
+      });
+      btn.disabled = false; btn.textContent = idleText;
+      // Supabase errors for an email with no login when shouldCreateUser
+      // is false; show the same neutral message either way so this form
+      // can't be used to check who has an account. Only a real cooldown /
+      // rate-limit message is worth showing as-is.
+      if (error && /second|rate|too many/i.test(error.message)) {
+        say(msgEl, error.message, "error");
+        return false;
       }
+      return true;
+    }
 
-      await goPostLogin("/player-home.html");
+    $("signin-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      say(msg, "");
+      const email = $("email").value.trim();
+      if (!email) return;
+      lastEmail = email;
+      const ok = await sendSignInLink(email, msg, $("link-btn"), "Email me a sign-in link");
+      if (ok) {
+        $("sent-sub").textContent = `If ${email} has a ChalkTalk login, a sign-in link is on its way.`;
+        say($("sent-msg"), "");
+        show("sent-card");
+      }
+    });
+    $("resend-btn").addEventListener("click", async () => {
+      const ok = await sendSignInLink(lastEmail, $("sent-msg"), $("resend-btn"), "Send it again");
+      if (ok) say($("sent-msg"), "Sent again.", "ok");
+    });
+    $("sent-back").addEventListener("click", () => show("signin-form"));
+
+    // ---- Optional password ----
+    $("toggle-pw-link").addEventListener("click", () => {
+      const pwBlock = $("pw-block");
+      const opening = pwBlock.classList.contains("hidden");
+      pwBlock.classList.toggle("hidden", !opening);
+      $("toggle-pw-link").textContent = opening ? "Hide password option" : "Use a password instead";
+      if (opening) $("password").focus();
     });
 
-    resetForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      resetMsg.textContent = "";
-      resetMsg.className = "";
-
-      const newPassword = document.getElementById("new-password").value;
-      const confirmPassword = document.getElementById("confirm-password").value;
-
-      if (newPassword !== confirmPassword) {
-        resetMsg.textContent = "Passwords don't match.";
-        resetMsg.className = "error";
-        return;
-      }
-
-      resetBtn.disabled = true;
-      resetBtn.textContent = "Saving...";
-
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-
+    $("pw-login-btn").addEventListener("click", async () => {
+      say(msg, "");
+      const email = $("email").value.trim();
+      const password = $("password").value;
+      if (!email || !password) { say(msg, "Enter your email and password.", "error"); return; }
+      const btn = $("pw-login-btn");
+      btn.disabled = true; btn.textContent = "Logging in...";
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        resetMsg.textContent = error.message;
-        resetMsg.className = "error";
-        resetBtn.disabled = false;
-        resetBtn.textContent = "Save new password";
+        say(msg, /invalid login credentials/i.test(error.message)
+          ? "That email and password don't match. No password yet? Use \"Email me a sign-in link\" instead."
+          : error.message, "error");
+        btn.disabled = false; btn.textContent = "Log in with password";
         return;
       }
+      await goPostLogin(HOME);
+    });
 
-      await goPostLogin("/player-home.html");
+    // ---- Forgot password ----
+    $("forgot-link").addEventListener("click", () => {
+      $("forgot-email").value = $("email").value.trim();
+      say($("forgot-msg"), "");
+      show("forgot-form");
+    });
+    $("forgot-back").addEventListener("click", () => show("signin-form"));
+    $("forgot-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("forgot-submit-btn");
+      btn.disabled = true; btn.textContent = "Sending...";
+      const { error } = await supabase.auth.resetPasswordForEmail($("forgot-email").value.trim(), { redirectTo: PAGE_URL });
+      btn.disabled = false; btn.textContent = "Email me a reset link";
+      if (error) { say($("forgot-msg"), error.message, "error"); return; }
+      say($("forgot-msg"), "If that email has a ChalkTalk login, a reset link is on its way. Check spam or promotions if it doesn't show up.", "info");
+    });
+
+    // ---- Shared: save a password (invite welcome + reset) ----
+    async function savePassword(pwId, confirmId, msgEl, btn, idleText) {
+      const pw = $(pwId).value, confirm = $(confirmId).value;
+      if (pw.length < 6) { say(msgEl, "Use at least 6 characters.", "error"); return; }
+      if (pw !== confirm) { say(msgEl, "Passwords don't match.", "error"); return; }
+      btn.disabled = true; btn.textContent = "Saving...";
+      const { error } = await supabase.auth.updateUser({ password: pw });
+      if (error) { say(msgEl, error.message, "error"); btn.disabled = false; btn.textContent = idleText; return; }
+      await goPostLogin(HOME);
+    }
+    $("welcome-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      savePassword("welcome-password", "welcome-confirm", $("welcome-msg"), $("welcome-save-btn"), "Save password & continue");
+    });
+    $("welcome-skip-btn").addEventListener("click", () => goPostLogin(HOME));
+    $("reset-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      savePassword("new-password", "confirm-password", $("reset-msg"), $("reset-submit-btn"), "Save new password");
     });
   </script>
 </body>
