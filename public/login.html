@@ -92,7 +92,35 @@
   #msg.error { color: #ff7b6e; }
   #msg.info { color: var(--muted); }
   #mfa-msg.error { color: #ff7b6e; }
+  #forgot-msg { margin-top: 14px; font-size: 13px; min-height: 18px; }
+  #forgot-msg.error, #reset-msg.error { color: #ff7b6e; }
+  #forgot-msg.info { color: var(--muted); }
+
+  /* Password field with show/hide eye (Sep 25, 2026). The global button
+     rule above styles every <button> as a full-width gold bar, so the eye
+     and the text-link buttons explicitly undo that. */
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 46px; }
+  button.eye {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    width: 36px; height: 36px; margin: 0; padding: 0;
+    background: transparent; border: none; border-radius: 6px;
+    color: var(--muted); display: flex; align-items: center; justify-content: center;
+  }
+  button.eye:hover, button.eye:focus-visible { color: var(--gold); outline: none; }
+  button.eye svg { width: 20px; height: 20px; }
+  button.link-btn {
+    width: auto; margin: 12px 0 0; padding: 0; background: none; border: none;
+    color: var(--muted); font-size: 12px; font-weight: 400; text-decoration: underline;
+  }
+  button.link-btn:hover { color: var(--gold); }
 </style>
+<script>
+  // Captured before supabase-js parses and clears the URL fragment, so
+  // the page can tell an invite / recovery / expired link apart from a
+  // normal visit. See the INVITE FLOW note in the module script below.
+  window.__ctAuthHash = window.location.hash || "";
+</script>
 </head>
 <body>
   <form class="card" id="login-form">
@@ -103,10 +131,31 @@
     <input type="email" id="email" required autocomplete="email" />
 
     <label for="password">Password</label>
-    <input type="password" id="password" required autocomplete="current-password" />
+    <div class="pw-wrap">
+      <input type="password" id="password" required autocomplete="current-password" />
+      <button type="button" class="eye" data-target="password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
 
     <button type="submit" id="submit-btn">Log in</button>
+    <button type="button" class="link-btn" id="forgot-link">Forgot password?</button>
     <div id="msg"></div>
+  </form>
+
+  <!-- Forgot password (Sep 25, 2026). Sends a Supabase reset email whose
+       link lands back on this page with #type=recovery, which the existing
+       set-password form below already handles. Also the self-serve way in
+       for any coach who used an invite before the invite fix and so never
+       set a password. -->
+  <form class="card" id="forgot-form" style="display:none;">
+    <h1>ChalkTalk</h1>
+    <p class="sub">Reset your password</p>
+
+    <label for="forgot-email">Email</label>
+    <input type="email" id="forgot-email" required autocomplete="email" />
+
+    <button type="submit" id="forgot-submit-btn">Email me a reset link</button>
+    <button type="button" class="link-btn" id="back-to-login">&larr; Back to log in</button>
+    <div id="forgot-msg"></div>
   </form>
 
   <!-- Shown instead of the login form when the coach arrives here via a
@@ -116,13 +165,19 @@
        that lets them actually set a new password once that happens. -->
   <form class="card" id="reset-form" style="display:none;">
     <h1>ChalkTalk</h1>
-    <p class="sub">Set a new password</p>
+    <p class="sub" id="reset-sub">Set a new password</p>
 
     <label for="new-password">New password</label>
-    <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
+    <div class="pw-wrap">
+      <input type="password" id="new-password" required autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="new-password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
 
     <label for="confirm-password">Confirm password</label>
-    <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+    <div class="pw-wrap">
+      <input type="password" id="confirm-password" required autocomplete="new-password" minlength="6" />
+      <button type="button" class="eye" data-target="confirm-password" aria-label="Show password" aria-pressed="false"></button>
+    </div>
 
     <button type="submit" id="reset-submit-btn">Save new password</button>
     <div id="reset-msg"></div>
@@ -162,7 +217,99 @@
 
     function showResetForm() {
       loginForm.style.display = "none";
+      forgotForm.style.display = "none";
       resetForm.style.display = "block";
+    }
+
+    // ---- Show/hide password eye ----
+    const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const EYE_SHUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    document.querySelectorAll("button.eye").forEach((eyeBtn) => {
+      eyeBtn.innerHTML = EYE_OPEN;
+      eyeBtn.addEventListener("click", () => {
+        const input = document.getElementById(eyeBtn.dataset.target);
+        const reveal = input.type === "password";
+        input.type = reveal ? "text" : "password";
+        eyeBtn.innerHTML = reveal ? EYE_SHUT : EYE_OPEN;
+        eyeBtn.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+        eyeBtn.setAttribute("aria-pressed", String(reveal));
+        input.focus();
+      });
+    });
+
+    // ---- Forgot password ----
+    const forgotForm = document.getElementById("forgot-form");
+    const forgotMsg = document.getElementById("forgot-msg");
+    const forgotBtn = document.getElementById("forgot-submit-btn");
+
+    function showForgotForm() {
+      document.getElementById("forgot-email").value = document.getElementById("email").value.trim();
+      forgotMsg.textContent = "";
+      forgotMsg.className = "";
+      loginForm.style.display = "none";
+      forgotForm.style.display = "block";
+    }
+    document.getElementById("forgot-link").addEventListener("click", showForgotForm);
+    document.getElementById("back-to-login").addEventListener("click", () => {
+      forgotForm.style.display = "none";
+      loginForm.style.display = "block";
+    });
+
+    forgotForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      forgotMsg.textContent = "";
+      forgotMsg.className = "";
+      forgotBtn.disabled = true;
+      forgotBtn.textContent = "Sending...";
+      const email = document.getElementById("forgot-email").value.trim();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/login.html",
+      });
+      forgotBtn.disabled = false;
+      forgotBtn.textContent = "Email me a reset link";
+      if (error) {
+        // Usually Supabase's per-address cooldown ("you can only request
+        // this after N seconds") -- worth showing as-is.
+        forgotMsg.textContent = error.message;
+        forgotMsg.className = "error";
+        return;
+      }
+      // Same message whether or not the address has an account, so this
+      // form can't be used to probe which emails are registered.
+      forgotMsg.textContent = "If that email has a ChalkTalk account, a reset link is on its way. Check your spam or promotions folder if it doesn't show up in a few minutes.";
+      forgotMsg.className = "info";
+    });
+
+    // INVITE FLOW (fixed Sep 25, 2026): an invite email's link lands here
+    // with #...type=invite and a real session, but supabase-js fires
+    // SIGNED_IN for it, not PASSWORD_RECOVERY -- so previously an invited
+    // coach was sent straight to the dashboard WITHOUT ever setting a
+    // password, and had no way back in next time. Invite links now get the
+    // same set-password form as recovery links, with welcome wording.
+    const authHash = window.__ctAuthHash || window.location.hash || "";
+    const hashParams = new URLSearchParams(authHash.replace(/^#/, ""));
+    const linkType = hashParams.get("type");
+    const isInviteLink = linkType === "invite" || linkType === "signup";
+    const isRecoveryLink = linkType === "recovery";
+    const linkError = hashParams.get("error_code") || hashParams.get("error");
+
+    function showInviteForm() {
+      document.getElementById("reset-sub").textContent = "Welcome! Choose a password to finish setting up your account.";
+      document.getElementById("reset-submit-btn").textContent = "Save password & continue";
+      showResetForm();
+    }
+
+    if (linkError) {
+      // Most common case: the invite / reset link expired (they're
+      // single-use and time-limited) -- say so instead of silently showing
+      // a login form the person has no password for.
+      msg.className = "error";
+      msg.textContent =
+        linkError === "otp_expired"
+          ? "That link has expired. Use \"Forgot password?\" below to get a fresh one, or reply to your invite email and we'll resend it."
+          : "That link didn't work: " + (hashParams.get("error_description") || linkError).replace(/\+/g, " ");
+    } else if (isInviteLink) {
+      showInviteForm();
     }
 
     function showMfaForm(defaultUrl) {
@@ -242,6 +389,8 @@
     supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         showResetForm();
+      } else if (event === "SIGNED_IN" && isInviteLink) {
+        showInviteForm();
       }
     });
 
@@ -249,8 +398,7 @@
     // skip straight to the dashboard (or a pending play -- see
     // goPostLogin). Recovery sessions are handled above instead, so check
     // the URL for that first.
-    const isRecoveryLink = window.location.hash.includes("type=recovery");
-    if (!isRecoveryLink) {
+    if (!isRecoveryLink && !isInviteLink) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) proceedPastMfaGate("/dashboard.html");
       });
@@ -269,7 +417,9 @@
       const { error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        msg.textContent = error.message;
+        msg.textContent = /invalid login credentials/i.test(error.message)
+          ? "That email and password don't match. Forgot it, or never set one? Use \"Forgot password?\" above."
+          : error.message;
         msg.className = "error";
         btn.disabled = false;
         btn.textContent = "Log in";
@@ -302,7 +452,7 @@
         resetMsg.textContent = error.message;
         resetMsg.className = "error";
         resetBtn.disabled = false;
-        resetBtn.textContent = "Save new password";
+        resetBtn.textContent = isInviteLink ? "Save password & continue" : "Save new password";
         return;
       }
 
