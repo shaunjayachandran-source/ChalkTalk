@@ -44,6 +44,12 @@ const PILOT_PROGRAM_SLUGS = ["dartmouth"];
 
 const ALLOWED_ROLES = ["athlete", "parent"];
 
+// Player/parent invite links land on the PLAYER login page (Sep 25, 2026 --
+// previously no redirect was passed, so they fell back to Supabase's Site
+// URL, the coach login.html, and then the coach dashboard). Must be listed
+// under Supabase Auth -> URL Configuration -> Redirect URLs.
+const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://chalktalk-sand.vercel.app";
+
 function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
@@ -75,7 +81,7 @@ export default async function handler(req, res) {
   // the read itself; the slug allowlist is the pilot gate specifically.
   const { data: programRow, error: programErr } = await session.supabase
     .from("programs")
-    .select("slug")
+    .select("slug, name")
     .eq("id", programId)
     .maybeSingle();
 
@@ -117,7 +123,28 @@ export default async function handler(req, res) {
     return sendJson(res, 500, { error: "Server misconfiguration" });
   }
 
-  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email);
+  // Personalises the invite email. `audience: "viewer"` (and `isParent`)
+  // are what the Supabase "Invite user" template branches on -- simple
+  // truthy flags rather than comparing role strings, because Go templates
+  // error when comparing a missing value, which would break coach invites
+  // that don't carry these fields.
+  const { data: inviterRow } = await serviceClient
+    .from("coaches")
+    .select("display_name")
+    .eq("id", session.user.id)
+    .maybeSingle();
+
+  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${SITE_ORIGIN}/player-login.html`,
+    data: {
+      audience: "viewer",
+      role: memberRow.role,
+      ...(memberRow.role === "parent" ? { isParent: "yes" } : {}),
+      programName: programRow.name || "",
+      inviterName: inviterRow?.display_name || "",
+      athleteName: memberRow.name || "",
+    },
+  });
 
   if (inviteErr) {
     // Same posture as invite-coach.js: don't try to silently look up and
