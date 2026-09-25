@@ -37,6 +37,13 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://dvilirimxnkaghqyoueh.supabase.co";
 
+// Where invite links land. Coaches go to the coach login page, which
+// shows "Welcome! Choose a password" for an invite link (see the INVITE
+// FLOW note in public/login.html). SITE_ORIGIN can override this for a
+// preview deployment; it must also be listed under Supabase Auth -> URL
+// Configuration -> Redirect URLs.
+const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://chalktalk-sand.vercel.app";
+
 function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
@@ -65,7 +72,17 @@ export async function provisionProgram({ slug, name, coachEmail, coachName, colo
 
   const serviceClient = getServiceClient();
 
-  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(coachEmail);
+  // role/programName personalise the invite email (Supabase "Invite user"
+  // template). No inviterName: a brand-new program's head coach is invited
+  // by ChalkTalk itself, and the template words that case differently.
+  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(coachEmail, {
+    redirectTo: `${SITE_ORIGIN}/login.html`,
+    data: {
+      role: "head_coach",
+      programName: name || "",
+      ...(coachName ? { full_name: coachName, display_name: coachName } : {}),
+    },
+  });
   if (inviteErr) {
     return {
       programId: null,
