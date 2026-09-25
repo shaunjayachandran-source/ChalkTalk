@@ -50,6 +50,13 @@ const SUPABASE_URL = "https://dvilirimxnkaghqyoueh.supabase.co";
 
 const ALLOWED_ROLES = ["assistant_coach", "graduate_assistant", "dbo"];
 
+// Where invite links land. Coaches go to the coach login page, which
+// shows "Welcome! Choose a password" for an invite link (see the INVITE
+// FLOW note in public/login.html). SITE_ORIGIN can override this for a
+// preview deployment; it must also be listed under Supabase Auth -> URL
+// Configuration -> Redirect URLs.
+const SITE_ORIGIN = process.env.SITE_ORIGIN || "https://chalktalk-sand.vercel.app";
+
 function getServiceClient() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set");
@@ -105,7 +112,28 @@ export default async function handler(req, res) {
     return sendJson(res, 500, { error: "Server misconfiguration" });
   }
 
-  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email);
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+
+  // Personalises the invite email (Supabase "Invite user" template reads
+  // these as {{ .Data.programName }} / {{ .Data.inviterName }} / etc.).
+  // Best-effort: a failed lookup just means a less personal email, never a
+  // failed invite. Added Sep 25, 2026 -- before this, no data was passed at
+  // all, so those template fields always rendered blank.
+  const [{ data: programRow }, { data: inviterRow }] = await Promise.all([
+    serviceClient.from("programs").select("name").eq("id", programId).maybeSingle(),
+    serviceClient.from("coaches").select("display_name, email").eq("id", session.user.id).maybeSingle(),
+  ]);
+  const inviteMetadata = {
+    role,
+    programName: programRow?.name || "",
+    inviterName: inviterRow?.display_name || "",
+    ...(trimmedName ? { full_name: trimmedName, display_name: trimmedName } : {}),
+  };
+
+  const { data: inviteData, error: inviteErr } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${SITE_ORIGIN}/login.html`,
+    data: inviteMetadata,
+  });
 
   if (inviteErr) {
     // Most common real case: this email already has an account. We don't
@@ -117,8 +145,6 @@ export default async function handler(req, res) {
   }
 
   const newCoachId = inviteData.user.id;
-
-    const trimmedName = typeof name === "string" ? name.trim() : "";
 
   const { error: coachUpsertErr } = await serviceClient
     .from("coaches")
